@@ -1,7 +1,7 @@
 SpreeRetailops
 ==============
 
-Introduction goes here.
+This extension provides API access points for use by the RetailOps direct Spree integration.
 
 Installation
 ------------
@@ -36,4 +36,4 @@ Simply add this require statement to your spec_helper:
 require 'spree_retailops/factories'
 ```
 
-Copyright (c) 2014 [name of extension creator], released under the New BSD License
+Copyright (c) 2014 Güd Technologies, Inc, released under the New BSD License
