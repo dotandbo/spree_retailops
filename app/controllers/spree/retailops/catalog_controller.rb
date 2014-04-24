@@ -129,7 +129,8 @@ module Spree
           update_if(pd, "available_on") { |avtime| product.available_on = avtime.nil? ? nil : Time.at(avtime) }
           update_if(pd, "slug") { |slug| product.slug = slug }
           update_if(pd, "name") { |name| product.name = name }
-          update_if(pd, "meta_description") { |md| product.meta_description = md }
+          update_if(pd, "meta_desc") { |md| product.meta_description = md }
+          update_if(pd, "description") { |d| product.description = d }
           update_if(pd, "meta_keywords") { |mk| product.meta_keywords = mk }
           update_if(pd, "ship_category") { |sc| product.shipping_category = memo(:upsert_ship_category, sc) }
 
