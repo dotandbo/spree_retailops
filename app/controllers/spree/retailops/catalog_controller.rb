@@ -89,11 +89,11 @@ module Spree
             Taxonomy.find_or_create_by!(name: taxonomy_name)
           end
 
-          taxon = nil
+          taxon = taxonomy.root
 
           taxon_names.each do |taxon_name|
             taxon = memo :upsert_taxon, (taxon && taxon.id), taxon_name do
-              taxonomy.taxons.find_or_create_by!(name: taxon_name)
+              taxonomy.taxons.find_or_create_by!(parent_id: taxon.id, name: taxon_name)
             end
           end
 
