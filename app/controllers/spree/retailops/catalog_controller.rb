@@ -119,6 +119,8 @@ module Spree
           ex_master_variant = Variant.includes(:product).find_by(sku: pd["sku"], is_master: true, deleted_at: nil)
           product = ex_master_variant && ex_master_variant.product
 
+          p pd["sku"], ex_master_variant, product
+
           # no product?  OK then
           product ||= Product.new
 
@@ -179,6 +181,8 @@ module Spree
               # need to create a brand new variant
               variant = product.variants.new(sku: v["sku"])
             end
+          else
+            variant.sku = v["sku"]
           end
 
           # Set variant aspects
