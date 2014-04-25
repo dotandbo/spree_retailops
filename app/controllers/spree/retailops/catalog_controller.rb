@@ -31,12 +31,19 @@ module Spree
         authorize! :create, Product
         authorize! :update, Product
 
-        params["products"].is_a? Array or throw "products must be array"
+        products = if params["products_json"]
+          # Workaround for https://github.com/rails/rails/issues/8832
+          JSON.parse(params["products_json"])
+        else
+          params["products"]
+        end
+
+        products.is_a? Array or throw "products must be array"
 
         @diag = []
         @memo = {}
         ActiveRecord::Base.transaction do
-          params["products"].each { |pd| upsert_product pd }
+          products.each { |pd| upsert_product pd }
         end
 
         render json: { "import_results" => @diag }
@@ -119,14 +126,12 @@ module Spree
           ex_master_variant = Variant.includes(:product).find_by(sku: pd["sku"], is_master: true, deleted_at: nil)
           product = ex_master_variant && ex_master_variant.product
 
-          p pd["sku"], ex_master_variant, product
-
           # no product?  OK then
           product ||= Product.new
 
           # Update product attributes
           update_if(pd, "tax_category") { |cat| product.tax_category = memo(:upsert_tax_category, cat) }
-          update_if(pd, "available_on") { |avtime| product.available_on = avtime.nil? ? nil : Time.at(avtime) }
+          update_if(pd, "available_on") { |avtime| product.available_on = avtime ? Time.at(avtime) : nil }
           update_if(pd, "slug") { |slug| product.slug = slug }
           update_if(pd, "name") { |name| product.name = name }
           update_if(pd, "meta_desc") { |md| product.meta_description = md }
@@ -140,7 +145,7 @@ module Spree
           end
 
           update_if pd, "taxa" do |taxa|
-            product.taxons = pd["taxa"].map { |path| upsert_taxon_path(path) }
+            product.taxons = taxa.map { |path| upsert_taxon_path(path) }
           end
 
           update_if pd, "properties" do |prop|
@@ -149,7 +154,7 @@ module Spree
               #both of these are by design-ish
               next if kv["key"].blank?
               old_value = product.property(kv["key"])
-              next if old_value == kv["value"] || old_value.nil? && kv["value"].blank?
+              next if old_value == kv["value"] || !old_value && kv["value"].blank?
               product.set_property(kv["key"], kv["value"])
             end
           end
@@ -211,8 +216,45 @@ module Spree
             variant.option_values = vals.values.compact
           end
 
-          update_if v, "images" do |img|
-            # TODO
+          update_if v, "images" do |imgs|
+            update_images variant.images, imgs
+          end
+        end
+
+        # reconcile spree's images with a passed-in image list.  a passed-in
+        # image can be satisfied by an existing image of the same name (ROP
+        # image filenames are hashed to force uniqueness), or a matched
+        # origin_url (this is an optimization for initial go-live when ROP
+        # images are copied from spree images, we don't need to copy them
+        # back).  All other images will be deleted...
+        def update_images imgcoll, imglist
+          stale = {}
+          by_url = {}
+          by_filename = {}
+
+          imgcoll.each do |i|
+            stale[i] = true
+            #p "Existing image: ",i.attachment.url(:original),i.attachment.original_filename,i
+            by_url[i.attachment.url(:original)] = i
+            by_filename[i.attachment.original_filename] = i
+          end
+
+          imglist.each do |i|
+            if old_i = by_url[i["origin_url"]] || by_filename[i["filename"]]
+              #p "Reusing image: ",i,old_i
+              old_i.update! alt: i["alt_text"]
+              stale.delete(old_i)
+            else
+              #p "New image: ",i
+              new_file = Paperclip.io_adapters.for(URI(i["url"]))
+              new_file.original_filename = i["filename"]
+              imgcoll.create!(attachment: new_file, alt: i["alt_text"])
+            end
+          end
+
+          stale.each_key do |i|
+            #p "Deleting old image: ",i
+            i.destroy
           end
         end
     end
