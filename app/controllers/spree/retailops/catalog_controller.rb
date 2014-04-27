@@ -47,9 +47,9 @@ module Spree
         end
 
         render json: { "import_results" => @diag }
-      rescue => exn
-        print exn, "\n", exn.backtrace.join("\n"), "\n"
-        raise
+      #rescue => exn
+      #  print exn, "\n", exn.backtrace.join("\n"), "\n"
+      #  raise
       end
 
       private
@@ -218,6 +218,10 @@ module Spree
 
           update_if v, "images" do |imgs|
             update_images variant.images, imgs
+          end
+
+          update_if v, "stock" do |s|
+            (@stocker ||= RopStockHelper.new).apply_stock(variant, s)
           end
         end
 
