@@ -36,4 +36,4 @@ Simply add this require statement to your spec_helper:
 require 'spree_retailops/factories'
 ```
 
-Copyright (c) 2014 Güd Technologies, Inc, released under the New BSD License
+Copyright (c) 2014 Gud Technologies, Inc, released under the New BSD License
