@@ -53,6 +53,10 @@ module Spree
       end
 
       private
+        # Add diagnostics for the current product/variant.  Using this instead
+        # of throwing an exception will cause the errors in RetailOps to be
+        # associated to the exact SKU (instead of the entire batch), and
+        # flagged as "user" errors rather than "system" errors.
         def add_error(msg)
           @diag << { "corr_id" => @current_corr_id, "message" => msg, "failed" => true }
         end
@@ -65,6 +69,7 @@ module Spree
           rec.errors.to_a.each { |m| add_error(m) }
         end
 
+        # Utilities
         def update_if(hash,key)
           yield hash[key] if hash.has_key? key
         end
@@ -73,6 +78,10 @@ module Spree
           return (@memo[args] ||= [block_given? ? yield : send(*args)])[0]
         end
 
+        # Create if needed objects which products/variants can refer to.
+        # Generally these should be called through #memo to avoid duplicative
+        # queries (although you cannot rely on memo to catch everything;
+        # string/number distinctions, for instance)
         def upsert_tax_category(cat)
           return cat.empty? ? nil : TaxCategory.find_or_create_by!(name: cat)
         end
@@ -90,6 +99,7 @@ module Spree
           return type.option_values.find_or_create_by!(name: value) { |v| v.presentation = value }
         end
 
+        # Taxon upserter does memoing internally due to common prefixes
         def upsert_taxon_path(path)
           taxonomy_name, *taxon_names = *path
           taxonomy = memo :upsert_taxonomy, taxonomy_name do
@@ -107,15 +117,17 @@ module Spree
           return taxon
         end
 
+        # This is where most of the fun happens: for a product, apply changes
+        # and create if needed
         def upsert_product(pd)
-          @current_corr_id = pd["corr_id"]
+          @current_corr_id = pd["corr_id"] # save this for add_error/warn
 
           return add_error("no variants specified") if pd["variants"].empty?
           # in the non-varying case, copy data up
           if !pd["varies"]
             v = pd["variants"][0]
             pd["variants"] = []
-            %w( images tax_category weight height depth width cost_price price cost_currency sku ).each do |c|
+            %w( images tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
               pd[c] = v[c] if v.has_key?(c)
             end
           end
@@ -159,6 +171,8 @@ module Spree
             end
           end
 
+          update_if(pd, "prod_extend") { |e| apply_extensions product, e }
+
           # Create/update variants, including the master
           upsert_variant(product, product.master, pd)
 
@@ -200,6 +214,7 @@ module Spree
           update_if(v, "height") { |w| variant.height = w.to_f }
           update_if(v, "depth") { |w| variant.depth = w.to_f }
           update_if(v, "cost_price") { |w| variant.cost_price = w.to_f }
+          update_if(v, "var_extend") { |e| apply_extensions variant, e }
 
           variant.save or return validate_to_error(variant)
 
@@ -244,21 +259,46 @@ module Spree
           end
 
           imglist.each do |i|
-            if old_i = by_url[i["origin_url"]] || by_filename[i["filename"]]
-              #p "Reusing image: ",i,old_i
-              old_i.update! alt: i["alt_text"]
-              stale.delete(old_i)
+            if imgobj = by_url[i["origin_url"]] || by_filename[i["filename"]]
+              #p "Reusing image: ",i,imgobj
+              stale.delete(imgobj)
             else
               #p "New image: ",i
               new_file = Paperclip.io_adapters.for(URI(i["url"]))
               new_file.original_filename = i["filename"]
-              imgcoll.create!(attachment: new_file, alt: i["alt_text"])
+              imgobj = imgcoll.build(attachment: new_file)
             end
+            imgobj.alt = i["alt_text"];
+            apply_extensions imgobj, i["extend"]
+            imgobj.save!
           end
 
           stale.each_key do |i|
             #p "Deleting old image: ",i
             i.destroy
+          end
+        end
+
+        # Try to generically apply stuff that isn't standard Spree features
+        def apply_extensions target, hash
+          return unless hash
+          hash.kind_of? Hash or raise "extension object must be a hash if provided"
+
+          hash.each do |name, value|
+            name = name.to_s; value = value.to_s
+
+            if target.respond_to? "retailops_extend_#{name}="
+              #allow specific behavior for custom development, if needed
+              target.public_send("retailops_extend_#{name}=", value)
+            elsif target.kind_of?(ActiveRecord::Base) && target.class.column_names.include?(name)
+              # this is a little dangerous but it should catch 90% of custom development with no added work
+              target.public_send("#{name}=", value)
+            elsif value.blank?
+              # ignore attempts to delete an extension that never existed
+            else
+              # else carp
+              add_warn("Extension field #{name} (#{target.class}) not available on this instance")
+            end
           end
         end
     end
