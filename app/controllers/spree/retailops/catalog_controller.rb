@@ -144,7 +144,8 @@ module Spree
           # Update product attributes
           update_if(pd, "tax_category") { |cat| product.tax_category = memo(:upsert_tax_category, cat) }
           update_if(pd, "available_on") { |avtime| product.available_on = avtime ? Time.at(avtime) : nil }
-          update_if(pd, "slug") { |slug| product.slug = slug }
+          update_if(pd, "slug") { |slug| product.slug = slug } if product.respond_to? :slug= # renamed 2.2.x
+          update_if(pd, "permalink") { |permalink| product.permalink = permalink } if product.respond_to? :permalink= # renamed 2.2.x
           update_if(pd, "name") { |name| product.name = name }
           update_if(pd, "meta_desc") { |md| product.meta_description = md }
           update_if(pd, "description") { |d| product.description = d }
