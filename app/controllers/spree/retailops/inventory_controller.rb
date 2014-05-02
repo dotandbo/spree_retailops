@@ -38,7 +38,7 @@ module Spree
           end
         end
 
-        render json: { }
+        render text: { }.to_json
       end
 
       private

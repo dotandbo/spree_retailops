@@ -46,10 +46,7 @@ module Spree
           products.each { |pd| upsert_product pd }
         end
 
-        render json: { "import_results" => @diag }
-      #rescue => exn
-      #  print exn, "\n", exn.backtrace.join("\n"), "\n"
-      #  raise
+        render text: { "import_results" => @diag }.to_json
       end
 
       private
