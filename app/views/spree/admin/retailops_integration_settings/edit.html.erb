@@ -1,0 +1,18 @@
+<%= render :partial => 'spree/admin/shared/configuration_menu' %>
+
+<% content_for :page_title do %>
+  <%= Spree.t(:retailops_integration_settings) %>
+<% end %>
+
+<%= form_tag admin_retailops_integration_settings_path, :method => :put do %>
+  <div data-hook="default-import" class="field align-center">
+    <%= hidden_field_tag 'preferences[retailops_import_by_default]', '0' %>
+    <%= check_box_tag 'preferences[retailops_import_by_default]', '1',  Spree::Config[:retailops_import_by_default] %>
+    <%= label_tag nil, Spree.t(:retailops_import_by_default) %>
+
+  </div>
+
+  <div class="form-buttons" data-hook="buttons">
+    <%= button Spree.t('actions.update'), 'icon-refresh' %>
+  </div>
+<% end %>
