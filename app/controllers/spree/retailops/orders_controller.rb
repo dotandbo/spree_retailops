@@ -16,7 +16,7 @@ module Spree
 
         def self.use_association(klass, syms, included = true)
           syms.each do |sym|
-            to_assoc = klass.reflect_on_association(sym)
+            to_assoc = klass.reflect_on_association(sym) or next
             to_incl_block = to_assoc.polymorphic? ? {} : (INCLUDE_BLOCKS[to_assoc.klass] ||= {})
             incl_block = INCLUDE_BLOCKS[klass] ||= {}
             incl_block[sym] = to_incl_block
