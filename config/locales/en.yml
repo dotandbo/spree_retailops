@@ -2,3 +2,10 @@ en:
   spree:
     retailops_integration_settings: "RetailOps Integration Settings"
     retailops_import_by_default: "Import newly created orders into RetailOps by default"
+    retailops_import_status: "RetailOps Import"
+    retailops_decline_import: "Stop"
+    retailops_accept_import: "Accept"
+    retailops_import_states:
+      'yes': "Pending"
+      done: "Complete"
+      'no': "Decline"

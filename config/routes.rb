@@ -11,4 +11,8 @@ Spree::Core::Engine.routes.draw do
   namespace :admin do
     resource :retailops_integration_settings, :only => ['update', 'edit']
   end
+
+  namespace :api do
+    put 'orders/:id/retailops_importable', to: 'orders#retailops_importable'
+  end
 end

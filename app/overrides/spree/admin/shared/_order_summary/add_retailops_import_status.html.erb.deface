@@ -1,0 +1,16 @@
+<!-- insert_after "#date_complete"
+     original '97543ac3255ad9880af911db6d7a8e35eb00e77a' -->
+
+<dt><%= Spree.t(:retailops_import_status) %>: </dt>
+<dd id='retailops_import_status'>
+  <%= Spree.t(@order.retailops_import, :scope => :retailops_import_states, :raise => true) %>
+  <% if @order.retailops_import == 'yes' and can? :update, @order %>
+    :
+    <%= link_to_with_icon "icon-remove", Spree.t(:retailops_decline_import), '#', :class => 'retailops-set-importable',
+        :data => {'order-number' => @order.number, 'importable' => 'no'} %>
+  <% elsif @order.retailops_import == 'no' and can? :update, @order %>
+    :
+    <%= link_to_with_icon "icon-ok", Spree.t(:retailops_accept_import), '#', :class => 'retailops-set-importable',
+        :data => {'order-number' => @order.number, 'importable' => 'yes'} %>
+  <% end %>
+</dd>
