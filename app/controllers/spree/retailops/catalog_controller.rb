@@ -43,7 +43,9 @@ module Spree
         @diag = []
         @memo = {}
         ActiveRecord::Base.transaction do
-          products.each { |pd| upsert_product pd }
+          products.each do |pd|
+            with_correlation(pd) { upsert_product pd }
+          end
         end
 
         render text: { "import_results" => @diag }.to_json
@@ -60,6 +62,16 @@ module Spree
 
         def add_warn(msg)
           @diag << { "corr_id" => @current_corr_id, "message" => msg }
+        end
+
+        # Run a block and make sure any errors in it get routed to the right place
+        def with_correlation(dto_in)
+          old_id, @current_corr_id = @current_corr_id, dto_in["corr_id"]
+          yield
+        rescue Exception => exn
+          @diag << { "corr_id" => dto_in["corr_id"], "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
+        ensure
+          @current_corr_id = old_id
         end
 
         def validate_to_error(rec)
@@ -117,8 +129,6 @@ module Spree
         # This is where most of the fun happens: for a product, apply changes
         # and create if needed
         def upsert_product(pd)
-          @current_corr_id = pd["corr_id"] # save this for add_error/warn
-
           return add_error("no variants specified") if pd["variants"].empty?
           # in the non-varying case, copy data up
           if !pd["varies"]
@@ -177,7 +187,7 @@ module Spree
           # product itself A-OK?  if not fail
           product.save or return validate_to_error(product)
 
-          pd["variants"].each { |v| upsert_variant(product, nil, v) }
+          pd["variants"].each { |v| with_correlation(v) { upsert_variant(product, nil, v) } }
         end
 
         def upsert_variant(product, variant, v)
