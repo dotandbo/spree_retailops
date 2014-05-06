@@ -213,10 +213,6 @@ module Spree
                 # Take the actual variant, because inventory reorganizations shouldn't affect wishlists, etc
                 # There could be some fun fallout from this.  We'll deal with it as it comes up.
                 variant.product = product
-                variant.product_id = product.id
-                variant.save!
-                variant = Variant.find(variant.id)
-                # XXX no matter what I do, the variant's product_id gets set back to its original value.  I have no idea what I'm doing wrong
               end
 
               unless variant
