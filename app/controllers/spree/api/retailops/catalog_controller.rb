@@ -70,6 +70,7 @@ module Spree
             old_id, @current_corr_id = @current_corr_id, dto_in["corr_id"]
             yield
           rescue Exception => exn
+            # XXX this is completely wrong.  exceptions should never be eaten inside a txn.  We need to break down the txn into smaller pieces that can be rolled back individually
             @diag << { "corr_id" => dto_in["corr_id"], "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
           ensure
             @current_corr_id = old_id
@@ -143,8 +144,11 @@ module Spree
             return add_error("sku not specified") if pd["sku"].empty?
 
             # Try to use the existing SKU to pull up a product
-            ex_master_variant = Variant.includes(:product).find_by(sku: pd["sku"], is_master: true, deleted_at: nil)
-            product = ex_master_variant && ex_master_variant.product
+            ex_variant = Variant.includes(:product).find_by(sku: pd["sku"], deleted_at: nil)
+            if ex_variant && !ex_variant.is_master
+              return add_error("sku number #{ex_variant.sku} is already used as a child sku, and cannot be used as a master here")
+            end
+            product = ex_variant && ex_variant.product
 
             # no product?  OK then
             product ||= Product.new
@@ -192,18 +196,23 @@ module Spree
           end
 
           def upsert_variant(product, variant, v)
-            @current_corr_id = v["corr_id"]
-
             return add_error("no sku specified") if v["sku"].empty?
 
             unless variant
-              variant = Variant.find_by(sku: v["sku"], is_master: false, deleted_at: nil)
+              variant = Variant.find_by(sku: v["sku"], deleted_at: nil)
+              if variant && variant.is_master
+                return add_error("sku number #{variant.sku} is already used as a master sku, and cannot be used as a child here")
+              end
+
               if variant && variant.product_id != product.id
                 # Oops.  Need to steal the SKU
-                # Should we delete here?
-                variant.sku = nil
+                # Take the actual variant, because inventory reorganizations shouldn't affect wishlists, etc
+                # There could be some fun fallout from this.  We'll deal with it as it comes up.
+                variant.product = product
+                variant.product_id = product.id
                 variant.save!
-                variant = nil
+                variant = Variant.find(variant.id)
+                # XXX no matter what I do, the variant's product_id gets set back to its original value.  I have no idea what I'm doing wrong
               end
 
               unless variant
@@ -245,7 +254,7 @@ module Spree
             end
 
             update_if v, "stock" do |s|
-              (@stocker ||= RopStockHelper.new).apply_stock(variant, s)
+              (@stocker ||= Spree::Retailops::RopStockHelper.new).apply_stock(variant, s)
             end
           end
 

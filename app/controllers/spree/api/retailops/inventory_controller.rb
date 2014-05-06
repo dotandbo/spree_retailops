@@ -26,7 +26,7 @@ module Spree
           authorize! :create, StockItem
           authorize! :update, StockItem
 
-          stocker = RopStockHelper.new
+          stocker = Spree::Retailops::RopStockHelper.new
 
           ActiveRecord::Base.transaction do
             type_check(params, "inventory_data", Array).each do |ivd|
