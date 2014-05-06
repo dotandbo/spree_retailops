@@ -310,7 +310,7 @@ module Spree
                 target.public_send("retailops_extend_#{name}=", value)
               elsif target.kind_of?(ActiveRecord::Base) && target.class.column_names.include?(name)
                 # this is a little dangerous but it should catch 90% of custom development with no added work
-                target.public_send("#{name}=", value)
+                target.attributes = { name => value }
               elsif value.blank?
                 # ignore attempts to delete an extension that never existed
               else
