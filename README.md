@@ -9,7 +9,7 @@ Installation
 Add spree_retailops to your Gemfile:
 
 ```ruby
-gem 'spree_retailops'
+gem 'spree_retailops', git: 'https://github.com/GudTech/spree_retailops.git'
 ```
 
 Bundle your dependencies and run the installation generator:
