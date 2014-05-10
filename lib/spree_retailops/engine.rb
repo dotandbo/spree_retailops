@@ -16,5 +16,9 @@ module SpreeRetailops
     end
 
     config.to_prepare &method(:activate).to_proc
+
+    initializer "spree_retailops.register.calculators" do |app|
+      app.config.spree.calculators.shipping_methods << Spree::Calculator::Shipping::RetailopsAdvisory
+    end
   end
 end

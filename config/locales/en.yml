@@ -1,6 +1,7 @@
 en:
   spree:
     retailops_integration_settings: "RetailOps Integration Settings"
+    retailops_advisory_ship_calculator: "RetailOps advisory shipping method"
     retailops_import_by_default: "Import newly created orders into RetailOps by default"
     retailops_import_status: "RetailOps Import"
     retailops_decline_import: "Stop"
