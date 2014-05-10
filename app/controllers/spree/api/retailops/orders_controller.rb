@@ -126,11 +126,13 @@ module Spree
         # shipments.  Credit where due: this code is heavily inspired by some
         # code written by @schwartzdev for @dotandbo to handle an Ordoro
         # integration.
-        def add_package
+        def add_packages
           ActiveRecord::Base.transaction do
             find_order
             separate_shipment_costs
-            extract_items_into_package
+            params["packages"].try(:each) do |pkg|
+              extract_items_into_package pkg
+            end
           end
           render text: {}.to_json
         end
@@ -182,7 +184,7 @@ module Spree
               # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
               # Spree 2.2.x: shipments have a cost which is authoritative, and one or more adjustments (shiptax, etc)
               cost = if shipment.respond_to?(:adjustment)
-                shipment.adjustment.present? ? shipment.adjustment.amount : 0
+                shipment.adjustment.try(:amount) || 0
               else
                 shipment.cost + shipment.adjustment_total
               end
@@ -204,8 +206,60 @@ module Spree
             end
           end
 
-          def extract_items_into_package
-            raise "Not implemented"
+          def extract_items_into_package(pkg)
+            number = 'P' + pkg["id"].to_i
+            shipcode = pkg["shipcode"].to_s
+            tracking = pkg["tracking"].to_s
+            line_items = pkg["contents"].to_a
+            from_location = pkg["from"].to_s
+            date_shipped = Time.parse(pkg["date"].to_s)
+
+            from_location = Spree::StockLocation.find_by(name: from_location) || raise("Stock location to ship from not present in Spree: #{from_location}")
+
+            if @order.shipments.find_by(number: number)
+              return # idempotence
+              # TODO: not sure if we should allow adding stuff after the shipment ships
+            end
+
+            shipment = @order.shipments.build
+
+            shipment.number = number
+            shipment.stock_location = from_location
+
+            existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
+
+            line_items.each do |item|
+              line_item = @order.line_items.find(item["id"].to_i)
+              quantity = item["quantity"].to_i
+
+              # move existing inventory units
+              reusable = existing_units[line_item.id] || []
+              reused = reusable.slice!(0, quantity)
+
+              shipment.inventory_units.concat(reused)
+              quantity -= reused.count
+
+              # limit transfered units to ordered units
+            end
+
+            shipment.shipping_rates.delete_all
+            shipment.cost = 0
+
+            if shipment.respond_to? :retailops_set_tracking
+              shipment.retailops_set_tracking(pkg)
+            else
+              shipment.add_shipping_method(advisory_method(shipcode), true)
+              shipment.tracking = tracking
+              shipment.created_at = date_shipped
+            end
+
+            shipment.state = 'ready'
+            shipment.finalize!
+            shipment.ship!
+            shipment.save!
+
+            @order.shipments.each { |s| s.reload; s.destroy if s.inventory_units.empty? }
+            @order.update!
           end
 
           def create_short_adjustment
@@ -237,7 +291,24 @@ module Spree
           end
 
           def rop_tbd_method
-            @tbd_shipping_method ||= raise "Not implemented"
+            advisory_method(params["partial_ship_name"] || "Partially shipped")
+          end
+
+          def advisory_method(name)
+            use_any_method = params["use_any_method"]
+            @advisory_methods ||= {}
+            unless @advisory_methods[name]
+              @advisory_methods[name] = ShippingMethod.where(admin_name: name).detect { |s| use_any_method || s.calculator < Spree::Calculator::Shipping::RetailopsAdvisory }
+            end
+
+            unless @advisory_methods[name]
+              raise "Advisory shipping method #{name} does not exist and automatic creation is disabled" if params["no_auto_shipping_methods"]
+              @advisory_methods[name] = ShippingMethod.create!(name: name, admin_name: name) do |m|
+                m.calculator = Spree::Calculator::Shipping::RetailopsAdvisory.new
+                m.shipping_categories << ShippingCategory.first
+              end
+            end
+            @advisory_methods[name]
           end
       end
     end
