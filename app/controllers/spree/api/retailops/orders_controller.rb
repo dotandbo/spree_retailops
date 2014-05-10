@@ -179,12 +179,12 @@ module Spree
           # create and delete shipments, transfer shipping costs to order
           # adjustments
           def separate_shipment_costs
-            extracted_total = 0
+            extracted_total = 0.to_d
             @order.shipments.each do |shipment|
               # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
               # Spree 2.2.x: shipments have a cost which is authoritative, and one or more adjustments (shiptax, etc)
               cost = if shipment.respond_to?(:adjustment)
-                shipment.adjustment.try(:amount) || 0
+                shipment.adjustment.try(:amount) || 0.to_d
               else
                 shipment.cost + shipment.adjustment_total
               end
@@ -243,7 +243,7 @@ module Spree
             end
 
             shipment.shipping_rates.delete_all
-            shipment.cost = 0
+            shipment.cost = 0.to_d
 
             if shipment.respond_to? :retailops_set_tracking
               shipment.retailops_set_tracking(pkg)
@@ -267,27 +267,61 @@ module Spree
           end
 
           def delete_unshipped_shipments
-            raise "Not implemented"
+            @order.shipments.reject(&:shipped?).each{ |s| s.cancel!; s.destroy! }
           end
 
           def create_refund_adjustment
             raise "Not implemented"
           end
 
+          # If something goes wrong with a multi-payment order, we want to log
+          # it and keep going.  We may get what we need from other payments,
+          # otherwise we want to make as much progress as possible...
+          def rescue_gateway_error
+            yield
+          rescue Spree::Core::GatewayError => e
+            @settlement_results["errors"] << e.message
+          end
+
+          # Try to get payment on a completed order as tidy as possible subject
+          # to your automation settings.  For maximum idempotence, returns the
+          # new state so that RetailOps can reconcile its own notion of the
+          # payment state.
           def settle_payments_if_desired
-            raise "Not implemented"
-            # while params["ok_capture"] && @order.needs_money && op = @order.payments.detect { |opp| can be captured && value <= @order.money_needed }
-            #   op.capture
-            # end
-            # while params["ok_partial_capture"] && @order.needs_money && op = @order.payments.detect { |op| can be partially captured && value > @order.money_needed }
-            #   op.capture partially
-            # end
-            # while params["ok_void"] && @order.fully_paid_for && op = @order.payments.detect { can be voided }
-            #   op.void
-            # end
-            # while params["ok_refund"] && @order.overpaid && op = @order.payments.detect { can be refunded }
-            #   op.refund just enough
-            # end
+            @settlement_results = { "errors" => [], "status" => [] }
+
+            op = nil
+
+            while params["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
+              rescue_gateway_error { op.capture! }
+            end
+
+            while params["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
+              if op.method(:capture!).parameters.count > 0
+                # Spree 2.2.x: can capture with an amount
+                rescue_gateway_error { op.capture! @order.display_outstanding_balance.money.cents }
+              else
+                # Spree 2.1.x: have to fudge the payment
+                op.amount = @order.outstanding_balance
+                rescue_gateway_error { op.capture! }
+              end
+            end
+
+            while params["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
+              rescue_gateway_error { op.void_transaction! }
+            end
+
+            while params["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
+              rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
+            end
+
+            status = []
+            # collect payment data
+            @order.payments.select{|op| op.amount > 0}.each do |op|
+              status << { "id" => op.id, "state" => op.state, "amount" => op.amount, "credit" => op.offsets_total.abs }
+            end
+
+            @settlement_results = { "errors" => errors, "status" => status }
           end
 
           def rop_tbd_method
