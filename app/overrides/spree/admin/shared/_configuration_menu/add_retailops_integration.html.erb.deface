@@ -1,4 +1,4 @@
 <!-- insert_bottom "[data-hook='admin_configurations_sidebar_menu'], #admin_configurations_sidebar_menu[data-hook]"
      original '668bb1683f0661874443e85619d3f7a98fa4fb7f' -->
 
-<%= configurations_sidebar_menu_item t(:retailops_integration_settings), edit_admin_retailops_integration_settings_path %>
+<%= configurations_sidebar_menu_item Spree.t(:retailops_integration_settings), edit_admin_retailops_integration_settings_path %>

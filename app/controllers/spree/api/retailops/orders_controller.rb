@@ -72,6 +72,8 @@ module Spree
           end
         end
 
+        # TODO: change this to use Ransack so ROP can drive the selection process
+        # (this is subtly wrong as is, we want to import orders with pending payments)
         def index
           authorize! :read, [Order, LineItem, Variant, Payment, PaymentMethod, CreditCard, Shipment, Adjustment]
 
@@ -97,6 +99,146 @@ module Spree
           Order.where(retailops_import: 'yes', id: ids).update_all(retailops_import: 'done')
           render text: {}.to_json
         end
+
+        # "Settlement" subsystem - called by ROP when there are large changes in the status of the order.
+        #
+        # * First we add zero or more "packages" of things we were able to ship.
+        #
+        # * Then we flag the order as complete - this means ROP will not be shipping any more.  Often everything will have been shipped.  Sometimes not.  Oversells and short ships are af will add a negative
+        #   adjustment if the order was short shipped.  Depending on
+        #   configuration this may also cause automatic capturing or refunding of
+        #   payments.
+        #
+        # * Then (later, and hopefully not at all) we can add refunds for
+        #   inventory returned in ROP.
+
+        # Package adding: This reflects a fairly major impedence mismatch
+        # between ROP and Spree, insofar as Spree wants to create shipments at
+        # checkout time and charge exact shipping, while ROP standard practice
+        # is to charge an abstraction of shipping that's close enough on
+        # average, and then decide the details of how this order will be
+        # shipped when it's actually ready to go out the door.  Because of this
+        # we have to fudge stuff a bit on shipment and recreate the Spree
+        # shipments to reflect how ROP is actually shipping it, so that the
+        # customer has the most actionable information.  A complication is that
+        # Spree's shipping rates are tied to the shipment, and need to be
+        # converted into order adjustments before we start mangling the
+        # shipments.  Credit where due: this code is heavily inspired by some
+        # code written by @schwartzdev for @dotandbo to handle an Ordoro
+        # integration.
+        def add_package
+          ActiveRecord::Base.transaction do
+            find_order
+            separate_shipment_costs
+            extract_items_into_package
+          end
+          render text: {}.to_json
+        end
+
+        # The Spree core appears to reflect two schools of thought on
+        # refunding.  The user guide suggests that one reason you might edit
+        # orders is if you could not ship them, which suggests handling short
+        # ships by modifying the order itself, then refunding by the difference
+        # between the new order value and the payment.  The core code itself
+        # handles returns by creating an Adjustment for the returned
+        # merchandise, and leaving the line items alone.
+        #
+        # We follow the latter approach because it allows us to keep RetailOps
+        # as the sole authoritative source of refund values, avoiding useless
+        # mismatch warnings.
+        def mark_complete
+          ActiveRecord::Base.transaction do
+            find_order
+            separate_shipment_costs
+            create_short_adjustment
+            delete_unshipped_shipments
+          end
+          settle_payments_if_desired
+          render text: @settlement_results.to_json
+        end
+
+        def add_refund
+          ActiveRecord::Base.transaction do
+            find_order
+            create_refund_adjustment
+          end
+          settle_payments_if_desired
+          render text: @settlement_results.to_json
+        end
+
+        private
+          # What order is being settled?
+          def find_order
+            @order = Order.find_by!(number: params["order_refnum"].to_s)
+            authorize! :update, @order
+          end
+
+          # To prevent Spree from trying to recalculate shipment costs as we
+          # create and delete shipments, transfer shipping costs to order
+          # adjustments
+          def separate_shipment_costs
+            extracted_total = 0
+            @order.shipments.each do |shipment|
+              # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
+              # Spree 2.2.x: shipments have a cost which is authoritative, and one or more adjustments (shiptax, etc)
+              cost = if shipment.respond_to?(:adjustment)
+                shipment.adjustment.present? ? shipment.adjustment.amount : 0
+              else
+                shipment.cost + shipment.adjustment_total
+              end
+
+              if cost > 0
+                extracted_total += cost
+                shipment.adjustment.open if shipment.respond_to? :adjustment
+                shipment.adjustments.delete_all if shipment.respond_to? :adjustments
+                shipment.shipping_rates.delete_all
+                shipment.add_shipping_method(rop_tbd_method, true)
+                shipment.save!
+              end
+            end
+
+            if extracted_total > 0
+              # TODO: is Standard Shipping the best name for this?  Should i18n happen?
+              @order.adjustments.create(amount: extracted_total, label: "Standard Shipping", mandatory: false)
+              @order.save!
+            end
+          end
+
+          def extract_items_into_package
+            raise "Not implemented"
+          end
+
+          def create_short_adjustment
+            raise "Not implemented"
+          end
+
+          def delete_unshipped_shipments
+            raise "Not implemented"
+          end
+
+          def create_refund_adjustment
+            raise "Not implemented"
+          end
+
+          def settle_payments_if_desired
+            raise "Not implemented"
+            # while params["ok_capture"] && @order.needs_money && op = @order.payments.detect { |opp| can be captured && value <= @order.money_needed }
+            #   op.capture
+            # end
+            # while params["ok_partial_capture"] && @order.needs_money && op = @order.payments.detect { |op| can be partially captured && value > @order.money_needed }
+            #   op.capture partially
+            # end
+            # while params["ok_void"] && @order.fully_paid_for && op = @order.payments.detect { can be voided }
+            #   op.void
+            # end
+            # while params["ok_refund"] && @order.overpaid && op = @order.payments.detect { can be refunded }
+            #   op.refund just enough
+            # end
+          end
+
+          def rop_tbd_method
+            @tbd_shipping_method ||= raise "Not implemented"
+          end
       end
     end
   end
