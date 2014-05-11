@@ -74,9 +74,13 @@ module Spree
         def index
           authorize! :read, [Order, LineItem, Variant, Payment, PaymentMethod, CreditCard, Shipment, Adjustment]
 
-          query = Order.ransack(params['q']).result.limit(params['limit'] || 50).includes(Extractor.root_includes)
+          options = params['options'] || {}
+          query = options['filter'] || {}
+          query['completed_at_not_null'] ||= 1
+          query['retailops_import_eq'] ||= 'yes'
+          results = Order.ransack(query).result.limit(params['limit'] || 50).includes(Extractor.root_includes)
 
-          render text: query.map { |o|
+          render text: results.map { |o|
             begin
               Extractor.walk_order_obj(o)
             rescue Exception => ex
