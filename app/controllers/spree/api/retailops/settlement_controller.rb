@@ -150,7 +150,7 @@ module Spree
             if shipment.respond_to? :retailops_set_tracking
               shipment.retailops_set_tracking(pkg)
             else
-              shipment.add_shipping_method(advisory_method(shipcode), true)
+              apply_shipcode shipment, shipcode
               shipment.tracking = tracking
               shipment.created_at = date_shipped
             end
@@ -162,6 +162,28 @@ module Spree
 
             @order.shipments.each { |s| s.reload; s.destroy if s.inventory_units.empty? }
             @order.update!
+          end
+
+          def apply_shipcode(shipment, shipcode)
+            # ShippingMethod|extrafield:value|extrafield:value
+            method, *fields = shipcode.split('|')
+            assocs = nil
+
+            fields.each do |part|
+              name, value = part.split(':')
+
+              assocs |= shipment.class.reflect_on_all_associations.each_with_object({}) { |a,h| h[a.name.to_s] = a.klass }
+
+              if shipment.respond_to? "retailops_extend_#{name}="
+                shipment.public_send("retailops_extend_#{name}=", value)
+              elsif assoc.key? name
+                shipment.attributes = { name => assoc[name].find_or_create_by!(name: value) }
+              elsif shipment.class.column_names.include? name
+                shipment.attributes = { name => value }
+              end
+            end
+
+            shipment.add_shipping_method(advisory_method(method), true)
           end
 
           def create_short_adjustment
