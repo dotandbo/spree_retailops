@@ -32,7 +32,7 @@ module Spree
           ActiveRecord::Base.transaction do
             find_order
             separate_shipment_costs
-            params["packages"].try(:each) do |pkg|
+            params["packages"].to_a.each do |pkg|
               extract_items_into_package pkg
             end
           end
@@ -54,8 +54,9 @@ module Spree
           ActiveRecord::Base.transaction do
             find_order
             separate_shipment_costs
-            create_short_adjustment
             delete_unshipped_shipments
+            params['refund_items'].to_a.each { |i| assert_refund_adjustment i }
+            @order.update!
           end
           settle_payments_if_desired
           render text: @settlement_results.to_json
@@ -64,13 +65,18 @@ module Spree
         def add_refund
           ActiveRecord::Base.transaction do
             find_order
-            create_refund_adjustment
+            params['refund_items'].to_a.each { |i| assert_refund_adjustment i }
+            @order.update!
           end
           settle_payments_if_desired
           render text: @settlement_results.to_json
         end
 
         private
+          def options
+            params['options'] || {}
+          end
+
           # What order is being settled?
           def find_order
             @order = Order.find_by!(number: params["order_refnum"].to_s)
@@ -186,16 +192,12 @@ module Spree
             shipment.add_shipping_method(advisory_method(method), true)
           end
 
-          def create_short_adjustment
-            raise "Not implemented"
+          def assert_refund_adjustment(adjinfo)
+            @order.adjustments.find_or_create_by!(label: adjinfo["label"].to_s) { |adj| adj.amount = -adjinfo["amount"].to_d }
           end
 
           def delete_unshipped_shipments
             @order.shipments.reject(&:shipped?).each{ |s| s.cancel!; s.destroy! }
-          end
-
-          def create_refund_adjustment
-            raise "Not implemented"
           end
 
           # If something goes wrong with a multi-payment order, we want to log
@@ -216,11 +218,11 @@ module Spree
 
             op = nil
 
-            while params["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
+            while options["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
               rescue_gateway_error { op.capture! }
             end
 
-            while params["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
+            while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
               if op.method(:capture!).parameters.count > 0
                 # Spree 2.2.x: can capture with an amount
                 rescue_gateway_error { op.capture! @order.display_outstanding_balance.money.cents }
@@ -231,11 +233,11 @@ module Spree
               end
             end
 
-            while params["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
+            while options["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
               rescue_gateway_error { op.void_transaction! }
             end
 
-            while params["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
+            while options["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
               rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
             end
 
@@ -249,18 +251,18 @@ module Spree
           end
 
           def rop_tbd_method
-            advisory_method(params["partial_ship_name"] || "Partially shipped")
+            advisory_method(options["partial_ship_name"] || "Partially shipped")
           end
 
           def advisory_method(name)
-            use_any_method = params["use_any_method"]
+            use_any_method = options["use_any_method"]
             @advisory_methods ||= {}
             unless @advisory_methods[name]
               @advisory_methods[name] = ShippingMethod.where(admin_name: name).detect { |s| use_any_method || s.calculator < Spree::Calculator::Shipping::RetailopsAdvisory }
             end
 
             unless @advisory_methods[name]
-              raise "Advisory shipping method #{name} does not exist and automatic creation is disabled" if params["no_auto_shipping_methods"]
+              raise "Advisory shipping method #{name} does not exist and automatic creation is disabled" if options["no_auto_shipping_methods"]
               @advisory_methods[name] = ShippingMethod.create!(name: name, admin_name: name) do |m|
                 m.calculator = Spree::Calculator::Shipping::RetailopsAdvisory.new
                 m.shipping_categories << ShippingCategory.first
