@@ -71,20 +71,18 @@ module Spree
           end
         end
 
-        # TODO: change this to use Ransack so ROP can drive the selection process
-        # (this is subtly wrong as is, we want to import orders with pending payments)
         def index
           authorize! :read, [Order, LineItem, Variant, Payment, PaymentMethod, CreditCard, Shipment, Adjustment]
 
-          query = params['all'] ? {} : { shipment_state: 'ready', payment_state: 'paid', retailops_import: 'yes' }
+          query = Order.ransack(params['q']).result.limit(params['limit'] || 50).includes(Extractor.root_includes)
 
-          if params['completed_from'] || params['completed_to']
-            query[:completed_at] = (Time.parse(params['completed_from']) rescue Time.mktime(1970)) ..
-              (Time.parse(params['completed_to']) rescue Time.now.next_year)
-          end
-
-          result = Order.where(query).limit(params[:limit] || 50).includes(Extractor.root_includes).map { |o| Extractor.walk_order_obj(o) }
-          render text: result.to_json
+          render text: query.map { |o|
+            begin
+              Extractor.walk_order_obj(o)
+            rescue Exception => ex
+              { "error" => ex.to_s, "trace" => ex.backtrace }
+            end
+          }.to_json
         end
 
         def export
