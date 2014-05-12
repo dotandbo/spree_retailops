@@ -102,6 +102,7 @@ module Spree
                 shipment.adjustment.open if shipment.respond_to? :adjustment
                 shipment.adjustments.delete_all if shipment.respond_to? :adjustments
                 shipment.shipping_rates.delete_all
+                shipment.cost = 0
                 shipment.add_shipping_method(rop_tbd_method, true)
                 shipment.save!
               end
@@ -115,7 +116,7 @@ module Spree
           end
 
           def extract_items_into_package(pkg)
-            number = 'P' + pkg["id"].to_i
+            number = 'P' + pkg["id"].to_i.to_s
             shipcode = pkg["shipcode"].to_s
             tracking = pkg["tracking"].to_s
             line_items = pkg["contents"].to_a
@@ -150,6 +151,7 @@ module Spree
               # limit transfered units to ordered units
             end
 
+            shipment.save!
             shipment.shipping_rates.delete_all
             shipment.cost = 0.to_d
 
@@ -166,7 +168,8 @@ module Spree
             shipment.ship!
             shipment.save!
 
-            @order.shipments.each { |s| s.reload; s.destroy if s.inventory_units.empty? }
+            @order.shipments.each { |s| s.reload; s.destroy! if s.inventory_units.empty? }
+            @order.reload
             @order.update!
           end
 
@@ -241,13 +244,10 @@ module Spree
               rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
             end
 
-            status = []
             # collect payment data
             @order.payments.select{|op| op.amount > 0}.each do |op|
-              status << { "id" => op.id, "state" => op.state, "amount" => op.amount, "credit" => op.offsets_total.abs }
+              @settlement_results["status"] << { "id" => op.id, "state" => op.state, "amount" => op.amount, "credit" => op.offsets_total.abs }
             end
-
-            @settlement_results = { "errors" => errors, "status" => status }
           end
 
           def rop_tbd_method
@@ -258,7 +258,7 @@ module Spree
             use_any_method = options["use_any_method"]
             @advisory_methods ||= {}
             unless @advisory_methods[name]
-              @advisory_methods[name] = ShippingMethod.where(admin_name: name).detect { |s| use_any_method || s.calculator < Spree::Calculator::Shipping::RetailopsAdvisory }
+              @advisory_methods[name] = ShippingMethod.where(admin_name: name).detect { |s| use_any_method || s.calculator.is_a?(Spree::Calculator::Shipping::RetailopsAdvisory) }
             end
 
             unless @advisory_methods[name]
