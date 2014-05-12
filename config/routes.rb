@@ -9,6 +9,7 @@ Spree::Core::Engine.routes.draw do
       post 'orders/add_packages', to: 'settlement#add_packages'
       post 'orders/mark_complete', to: 'settlement#mark_complete'
       post 'orders/add_refund', to: 'settlement#add_refund'
+      post 'orders/cancel', to: 'settlement#cancel'
     end
   end
 

@@ -72,6 +72,14 @@ module Spree
           render text: @settlement_results.to_json
         end
 
+        # duplicates /api/order/:num/cancel but it seems useful to have a single point of contact
+        def cancel
+          find_order
+          @order.cancel! unless @order.canceled?
+          settle_payments_if_desired
+          render text: @settlement_results.to_json
+        end
+
         private
           def options
             params['options'] || {}
@@ -87,6 +95,7 @@ module Spree
           # create and delete shipments, transfer shipping costs to order
           # adjustments
           def separate_shipment_costs
+            return if @order.canceled?
             extracted_total = 0.to_d
             @order.shipments.each do |shipment|
               # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
@@ -116,6 +125,7 @@ module Spree
           end
 
           def extract_items_into_package(pkg)
+            return if @order.canceled?
             number = 'P' + pkg["id"].to_i.to_s
             shipcode = pkg["shipcode"].to_s
             tracking = pkg["tracking"].to_s
@@ -196,10 +206,12 @@ module Spree
           end
 
           def assert_refund_adjustment(adjinfo)
+            return if @order.canceled?
             @order.adjustments.find_or_create_by!(label: adjinfo["label"].to_s) { |adj| adj.amount = -adjinfo["amount"].to_d }
           end
 
           def delete_unshipped_shipments
+            return if @order.canceled?
             @order.shipments.reject(&:shipped?).each{ |s| s.cancel!; s.destroy! }
           end
 
@@ -221,27 +233,29 @@ module Spree
 
             op = nil
 
-            while options["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
-              rescue_gateway_error { op.capture! }
-            end
-
-            while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
-              if op.method(:capture!).parameters.count > 0
-                # Spree 2.2.x: can capture with an amount
-                rescue_gateway_error { op.capture! @order.display_outstanding_balance.money.cents }
-              else
-                # Spree 2.1.x: have to fudge the payment
-                op.amount = @order.outstanding_balance
+            unless @order.canceled?
+              while options["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
                 rescue_gateway_error { op.capture! }
               end
-            end
 
-            while options["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
-              rescue_gateway_error { op.void_transaction! }
-            end
+              while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
+                if op.method(:capture!).parameters.count > 0
+                  # Spree 2.2.x: can capture with an amount
+                  rescue_gateway_error { op.capture! @order.display_outstanding_balance.money.cents }
+                else
+                  # Spree 2.1.x: have to fudge the payment
+                  op.amount = @order.outstanding_balance
+                  rescue_gateway_error { op.capture! }
+                end
+              end
 
-            while options["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
-              rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
+              while options["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
+                rescue_gateway_error { op.void_transaction! }
+              end
+
+              while options["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
+                rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
+              end
             end
 
             # collect payment data
