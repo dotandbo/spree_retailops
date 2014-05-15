@@ -239,14 +239,12 @@ module Spree
               end
 
               while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |op| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
-                if op.method(:capture!).parameters.count > 0
-                  # Spree 2.2.x: can capture with an amount
-                  rescue_gateway_error { op.capture! @order.display_outstanding_balance.money.cents }
-                else
-                  # Spree 2.1.x: have to fudge the payment
-                  op.amount = @order.outstanding_balance
-                  rescue_gateway_error { op.capture! }
-                end
+                # Spree 2.2.x allows you to pass an argument to
+                # Spree::Payment#capture! but this does not seem to do quite
+                # what we want.  In particular the payment system treats the
+                # remainder of the payment as pending.
+                op.amount = @order.outstanding_balance
+                rescue_gateway_error { op.capture! }
               end
 
               while options["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
@@ -268,6 +266,7 @@ module Spree
             advisory_method(options["partial_ship_name"] || "Partially shipped")
           end
 
+          # Find or create an advisory (not selectable) shipping method to represent how ROP shipped this item
           def advisory_method(name)
             use_any_method = options["use_any_method"]
             @advisory_methods ||= {}
