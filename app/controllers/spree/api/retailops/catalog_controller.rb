@@ -39,11 +39,9 @@ module Spree
             params["products"]
           end
 
-          products.is_a? Array or throw "products must be array"
-
           @diag = []
           @memo = {}
-          products.each { |pd| upsert_product_and_variants pd }
+          products.to_a.each { |pd| upsert_product_and_variants pd }
 
           render text: { "import_results" => @diag }.to_json
         end
@@ -143,11 +141,12 @@ module Spree
           # This is where most of the fun happens: for a product, apply changes
           # and create if needed
           def upsert_product_only(pd, variant_sets)
-            return add_error("no variants specified") if pd["variants"].empty?
+            variant_list = pd['variants'].to_a
+            return add_error("no variants specified") if variant_list.empty?
             # in the non-varying case, copy data up
             if !pd["varies"]
-              v = pd["variants"][0]
-              pd["variants"] = []
+              v = variant_list[0]
+              variant_list = []
               %w( images tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
                 pd[c] = v[c] if v.has_key?(c)
               end
@@ -178,18 +177,18 @@ module Spree
 
             # set things that hang off the product
             update_if pd, "options_used" do |opts|
-              product.option_types = pd["options_used"].map { |opt| memo(:upsert_option_type, opt) }
+              product.option_types = pd["options_used"].to_a.map { |opt| memo(:upsert_option_type, opt) }
             end
 
             update_if pd, "taxa" do |taxa|
-              product.taxons = taxa.map { |path| upsert_taxon_path(path) }
+              product.taxons = taxa.to_a.map { |path| upsert_taxon_path(path) }
             end
 
             update_if pd, "properties" do |prop|
               ex_props = {}
               product.product_properties.each { |pp| ex_props[pp.property] = pp }
 
-              prop.each do |kv|
+              prop.to_a.each do |kv|
                 prop = memo(:upsert_property, kv["key"]) or next
 
                 pprop = ex_props.delete(prop) || product.product_properties.build( property: prop )
@@ -211,7 +210,7 @@ module Spree
             # product itself A-OK?  if not fail
             product.save or return validate_to_error(product)
 
-            pd["variants"].each { |v| variant_sets << lambda { with_correlation(v) { upsert_variant(product, nil, v) } } }
+            variant_list.each { |v| variant_sets << lambda { with_correlation(v) { upsert_variant(product, nil, v) } } }
           end
 
           def upsert_variant(product, variant, v)
@@ -253,7 +252,7 @@ module Spree
 
             update_if v, "options" do |op; vals|
               vals = {}
-              op.each do |kv|
+              op.to_a.each do |kv|
                 type = memo(:upsert_option_type, kv["name"]) or next
                 value = memo(:upsert_option_value, type, kv["value"])
                 vals[type.id] = value
@@ -288,7 +287,7 @@ module Spree
               by_filename[i.attachment.original_filename] = i
             end
 
-            imglist.each do |i|
+            imglist.to_a.each do |i|
               if imgobj = by_url[i["origin_url"]] || by_filename[i["filename"]]
                 #p "Reusing image: ",i,imgobj
                 stale.delete(imgobj)
