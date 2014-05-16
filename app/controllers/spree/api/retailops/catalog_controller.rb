@@ -238,9 +238,6 @@ module Spree
 
             update_if v, "options" do |op; vals|
               vals = {}
-              variant.option_values.each do |value|
-                vals[value.option_type_id] = value
-              end
               op.each do |kv|
                 type = memo(:upsert_option_type, kv["name"]) or next
                 value = memo(:upsert_option_value, type, kv["value"])
