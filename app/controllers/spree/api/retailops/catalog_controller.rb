@@ -49,6 +49,10 @@ module Spree
         end
 
         private
+          def options
+            params["options"] || {}
+          end
+
           # Add diagnostics for the current product/variant.  Using this instead
           # of throwing an exception will cause the errors in RetailOps to be
           # associated to the exact SKU (instead of the entire batch), and
@@ -103,6 +107,10 @@ module Spree
 
           def upsert_ship_category(sc)
             return sc.empty? ? nil : ShippingCategory.find_or_create_by!(name: sc)
+          end
+
+          def upsert_property(pr)
+            return pr.empty? ? nil : Property.find_or_create_by!(name: sc) { |pr| pr.presentation = sc }
           end
 
           def upsert_option_type(opt)
@@ -178,14 +186,21 @@ module Spree
             end
 
             update_if pd, "properties" do |prop|
+              ex_props = {}
+              product.product_properties.each { |pp| ex_props[pp.property] = pp }
+
               prop.each do |kv|
-                #this does not erase properties ever, nor overwrite properties not mentioned
-                #both of these are by design-ish
-                next if kv["key"].blank?
-                old_value = product.property(kv["key"])
-                next if old_value == kv["value"] || !old_value && kv["value"].blank?
-                product.set_property(kv["key"], kv["value"])
+                prop = memo(:upsert_property, kv["key"]) or next
+
+                pprop = ex_props.delete(prop) || product.product_properties.build( property: prop )
+
+                if pprop.value != kv["value"] && (options['delete_old_properties'] || !kv["value"].blank?)
+                  pprop.value = kv["value"]
+                  pprop.save!
+                end
               end
+
+              ex_props.each_value(&:destroy!) if options['delete_old_properties']
             end
 
             update_if(pd, "prod_extend") { |e| apply_extensions product, e }
