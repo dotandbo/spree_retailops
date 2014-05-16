@@ -108,7 +108,7 @@ module Spree
           end
 
           def upsert_property(pr)
-            return pr.empty? ? nil : Property.find_or_create_by!(name: sc) { |pr| pr.presentation = sc }
+            return pr.empty? ? nil : Property.find_or_create_by!(name: pr) { |r| r.presentation = pr }
           end
 
           def upsert_option_type(opt)
@@ -190,10 +190,11 @@ module Spree
 
               prop.to_a.each do |kv|
                 prop = memo(:upsert_property, kv["key"]) or next
+                kv["value"].present? or next
 
                 pprop = ex_props.delete(prop) || product.product_properties.build( property: prop )
 
-                if pprop.value != kv["value"] && (options['delete_old_properties'] || !kv["value"].blank?)
+                if pprop.value != kv["value"]
                   pprop.value = kv["value"]
                   pprop.save!
                 end
