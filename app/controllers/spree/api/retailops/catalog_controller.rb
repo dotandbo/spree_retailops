@@ -41,6 +41,7 @@ module Spree
 
           @diag = []
           @memo = {}
+          @failed = {}
           products.to_a.each { |pd| upsert_product_and_variants pd }
 
           render text: { "import_results" => @diag }.to_json
@@ -56,7 +57,12 @@ module Spree
           # associated to the exact SKU (instead of the entire batch), and
           # flagged as "user" errors rather than "system" errors.
           def add_error(msg)
+            @failed[@current_corr_id] = true
             @diag << { "corr_id" => @current_corr_id, "message" => msg, "failed" => true }
+          end
+
+          def tx_failed?
+            @failed[@current_corr_id]
           end
 
           def add_warn(msg)
@@ -65,13 +71,15 @@ module Spree
 
           # Run a block and make sure any errors in it get routed to the right place
           def with_correlation(dto_in)
-            old_id, @current_corr_id = @current_corr_id, dto_in["corr_id"]
+            id = dto_in["corr_id"]
+            old_id, @current_corr_id = @current_corr_id, id
             ActiveRecord::Base.transaction do
               yield
+              raise ActiveRecord::Rollback if tx_failed?
             end
           rescue Exception => exn
             @memo = {} # possibly stale IDs
-            @diag << { "corr_id" => dto_in["corr_id"], "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
+            @diag << { "corr_id" => id, "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
           ensure
             @current_corr_id = old_id
           end
@@ -211,7 +219,9 @@ module Spree
             # product itself A-OK?  if not fail
             product.save or return validate_to_error(product)
 
-            variant_list.each { |v| variant_sets << lambda { with_correlation(v) { upsert_variant(product, nil, v) } } }
+            unless tx_failed?
+              variant_list.each { |v| variant_sets << lambda { with_correlation(v) { upsert_variant(product, nil, v) } } }
+            end
           end
 
           def upsert_variant(product, variant, v)
