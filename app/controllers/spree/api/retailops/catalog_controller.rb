@@ -155,7 +155,7 @@ module Spree
             if !pd["varies"]
               v = variant_list[0]
               variant_list = []
-              %w( images tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
+              %w( images stock tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
                 pd[c] = v[c] if v.has_key?(c)
               end
             end
