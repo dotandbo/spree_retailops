@@ -146,7 +146,7 @@ module Spree
 
             existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
 
-            line_items.each do |item|
+            line_items.to_a.each do |item|
               line_item = @order.line_items.find(item["id"].to_i)
               quantity = item["quantity"].to_i
 
@@ -208,7 +208,7 @@ module Spree
             return if @order.canceled?
             existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
 
-            refunds.each do |item|
+            refunds.to_a.each do |item|
               created = nil
               @order.adjustments.find_or_create_by!(label: item["label"].to_s) { |adj| adj.amount = -item["amount"].to_d; created = true }
 
