@@ -235,6 +235,16 @@ module Spree
             yield
           rescue Spree::Core::GatewayError => e
             @settlement_results["errors"] << e.message
+          ensure
+            @order.reload
+          end
+
+          # avoid infinite loops and only process a given payment once
+          def pick_payment(&blk)
+            @payments_available ||= @order.payments.to_a
+            chosen = @payments_available.detect(&blk)
+            @payments_available.delete(chosen) if chosen
+            chosen
           end
 
           # Try to get payment on a completed order as tidy as possible subject
@@ -247,11 +257,11 @@ module Spree
             op = nil
 
             unless @order.canceled?
-              while options["ok_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
+              while options["ok_capture"] && @order.outstanding_balance > 0 && op = pick_payment { |opp| opp.pending? && opp.amount > 0 && opp.amount <= @order.outstanding_balance }
                 rescue_gateway_error { op.capture! }
               end
 
-              while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
+              while options["ok_partial_capture"] && @order.outstanding_balance > 0 && op = pick_payment { |opp| opp.pending? && opp.amount > 0 && opp.amount > @order.outstanding_balance }
                 # Spree 2.2.x allows you to pass an argument to
                 # Spree::Payment#capture! but this does not seem to do quite
                 # what we want.  In particular the payment system treats the
@@ -260,11 +270,11 @@ module Spree
                 rescue_gateway_error { op.capture! }
               end
 
-              while options["ok_void"] && @order.outstanding_balance <= 0 && op = @order.payments.detect { |opp| opp.pending? && opp.amount > 0 }
+              while options["ok_void"] && @order.outstanding_balance <= 0 && op = pick_payment { |opp| opp.pending? && opp.amount > 0 }
                 rescue_gateway_error { op.void_transaction! }
               end
 
-              while options["ok_refund"] && @order.outstanding_balance < 0 && op = @order.payments.detect { |opp| opp.completed? && opp.can_credit? }
+              while options["ok_refund"] && @order.outstanding_balance < 0 && op = pick_payment { |opp| opp.completed? && opp.can_credit? }
                 rescue_gateway_error { op.credit! } # remarkably, THIS one picks the right amount for us
               end
             end
