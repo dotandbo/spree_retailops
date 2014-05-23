@@ -135,7 +135,7 @@ module Spree
 
             from_location = Spree::StockLocation.find_by(name: from_location) || raise("Stock location to ship from not present in Spree: #{from_location}")
 
-            if @order.shipments.find_by(number: number)
+            if @order.shipments.exists?([ "number = ? OR number LIKE ?", number, "#{number}-%" ]) # tolerate Spree's disambiguative renaming
               return # idempotence
               # TODO: not sure if we should allow adding stuff after the shipment ships
             end
