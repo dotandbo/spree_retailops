@@ -54,8 +54,7 @@ module Spree
           ActiveRecord::Base.transaction do
             find_order
             separate_shipment_costs
-            delete_unshipped_shipments
-            params['refund_items'].to_a.each { |i| assert_refund_adjustment i }
+            assert_refund_adjustments params['refund_items'], true
             @order.update!
           end
           settle_payments_if_desired
@@ -65,7 +64,7 @@ module Spree
         def add_refund
           ActiveRecord::Base.transaction do
             find_order
-            params['refund_items'].to_a.each { |i| assert_refund_adjustment i }
+            assert_refund_adjustments params['refund_items'], false
             @order.update!
           end
           settle_payments_if_desired
@@ -205,9 +204,23 @@ module Spree
             shipment.add_shipping_method(advisory_method(method), true)
           end
 
-          def assert_refund_adjustment(adjinfo)
+          def assert_refund_adjustments(refunds, cancel_ship)
             return if @order.canceled?
-            @order.adjustments.find_or_create_by!(label: adjinfo["label"].to_s) { |adj| adj.amount = -adjinfo["amount"].to_d }
+            existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
+
+            refunds.each do |item|
+              created = nil
+              @order.adjustments.find_or_create_by!(label: item["label"].to_s) { |adj| adj.amount = -item["amount"].to_d; created = true }
+
+              if created && cancel_ship
+                (existing_units[ item['id'].to_i ] || []).slice!(0, item['quantity'].to_i).each(&:destroy!)
+              end
+            end
+
+            if cancel_ship
+              @order.shipments.each { |s| s.reload; s.destroy! if s.inventory_units.empty? }
+            end
+            @order.reload
           end
 
           def delete_unshipped_shipments
