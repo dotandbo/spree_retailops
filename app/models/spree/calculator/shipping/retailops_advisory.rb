@@ -10,6 +10,10 @@ module Spree
       def available?(package)
         false
       end
+
+      def compute_package(package)
+        0
+      end
     end
   end
 end
