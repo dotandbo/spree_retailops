@@ -144,15 +144,14 @@ module Spree
             shipment.number = number
             shipment.stock_location = from_location
 
-            existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
+            collect_inventory_units
 
             line_items.to_a.each do |item|
               line_item = @order.line_items.find(item["id"].to_i)
               quantity = item["quantity"].to_i
 
               # move existing inventory units
-              reusable = existing_units[line_item.id] || []
-              reused = reusable.slice!(0, quantity)
+              reused = collected_units_for_line_item(line_item).slice!(0, quantity)
 
               shipment.inventory_units.concat(reused)
               quantity -= reused.count
@@ -204,16 +203,27 @@ module Spree
             shipment.add_shipping_method(advisory_method(method), true)
           end
 
+          InvUnitsByLineItem = Spree::InventoryUnit.column_names.include? 'line_item_id'
+
+          def collect_inventory_units
+            @existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&(InvUnitsByLineItem ? :line_item_id : :variant_id))
+          end
+
+          def collected_units_for_line_item(li)
+            @existing_units[ InvUnitsByLineItem ? li.id : li.variant_id ] ||= []
+          end
+
           def assert_refund_adjustments(refunds, cancel_ship)
             return if @order.canceled?
-            existing_units = @order.inventory_units.reject{ |u| u.shipped? || u.returned? }.group_by(&:line_item_id)
+            collect_inventory_units
 
             refunds.to_a.each do |item|
               created = nil
               @order.adjustments.find_or_create_by!(label: item["label"].to_s) { |adj| adj.amount = -item["amount"].to_d; created = true }
 
               if created && cancel_ship
-                (existing_units[ item['id'].to_i ] || []).slice!(0, item['quantity'].to_i).each(&:destroy!)
+                line_item = @order.line_items.find(item["id"].to_i)
+                collected_units_for_line_item(line_item).slice!(0, item['quantity'].to_i).each(&:destroy!)
               end
             end
 
