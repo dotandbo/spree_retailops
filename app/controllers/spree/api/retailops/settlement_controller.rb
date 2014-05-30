@@ -129,10 +129,10 @@ module Spree
             shipcode = pkg["shipcode"].to_s
             tracking = pkg["tracking"].to_s
             line_items = pkg["contents"].to_a
-            from_location = pkg["from"].to_s
+            from_location_name = pkg["from"].to_s
             date_shipped = Time.parse(pkg["date"].to_s)
 
-            from_location = Spree::StockLocation.find_by(name: from_location) || raise("Stock location to ship from not present in Spree: #{from_location}")
+            from_location = Spree::StockLocation.find_or_create_by!(name: from_location_name) { |l| l.admin_name = from_location_name }
 
             if @order.shipments.exists?([ "number = ? OR number LIKE ?", number, "#{number}-%" ]) # tolerate Spree's disambiguative renaming
               return # idempotence
