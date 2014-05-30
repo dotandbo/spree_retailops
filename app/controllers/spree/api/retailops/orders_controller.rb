@@ -84,7 +84,7 @@ module Spree
             begin
               Extractor.walk_order_obj(o)
             rescue Exception => ex
-              { "error" => ex.to_s, "trace" => ex.backtrace }
+              { "error" => ex.to_s, "trace" => ex.backtrace, "number" => o.number }
             end
           }.to_json
         end
