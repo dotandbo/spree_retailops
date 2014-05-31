@@ -132,7 +132,7 @@ module Spree
 
             from_location = Spree::StockLocation.find_or_create_by!(name: from_location_name) { |l| l.admin_name = from_location_name }
 
-            shipment = @order.shipments.first([ "number = ? OR number LIKE ?", number, "#{number}-%" ]) # tolerate Spree's disambiguative renaming
+            shipment = @order.shipments.where( "number = ? OR number LIKE ?", number, "#{number}-%" ).first # tolerate Spree's disambiguative renaming
             if shipment
               apply_shipcode shipment, pkg
               shipment.save!
@@ -186,17 +186,19 @@ module Spree
 
             # ShippingMethod|extrafield:value|extrafield:value
             method, *fields = shipcode.split('|')
+            method = URI.parser.unescape(method.encode(Encoding::UTF_8))
             assocs = nil
 
             fields.each do |part|
               name, value = part.split(':')
+              value = URI.parser.unescape(value.encode(Encoding::UTF_8))
 
-              assocs |= shipment.class.reflect_on_all_associations.each_with_object({}) { |a,h| h[a.name.to_s] = a.klass }
+              assocs ||= shipment.class.reflect_on_all_associations.each_with_object({}) { |a,h| h[a.name.to_s] = a.klass }
 
               if shipment.respond_to? "retailops_extend_#{name}="
                 shipment.public_send("retailops_extend_#{name}=", value)
-              elsif assoc.key? name
-                shipment.attributes = { name => assoc[name].find_or_create_by!(name: value) }
+              elsif assocs.key? name
+                shipment.attributes = { name => assocs[name].find_or_create_by!(name: value) }
               elsif shipment.class.column_names.include? name
                 shipment.attributes = { name => value }
               end
