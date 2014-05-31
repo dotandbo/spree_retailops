@@ -298,6 +298,8 @@ module Spree
               by_filename[i.attachment.original_filename] = i
             end
 
+            sequence = 1
+
             imglist.to_a.each do |i|
               if imgobj = by_url[i["origin_url"]] || by_filename[i["filename"]]
                 #p "Reusing image: ",i,imgobj
@@ -308,7 +310,9 @@ module Spree
                 new_file.original_filename = i["filename"]
                 imgobj = imgcoll.build(attachment: new_file)
               end
-              imgobj.alt = i["alt_text"];
+              imgobj.alt = i["alt_text"]
+              imgobj.position = sequence if imgobj.position != sequence
+              sequence += 1
               apply_extensions imgobj, i["extend"]
               imgobj.save!
             end
