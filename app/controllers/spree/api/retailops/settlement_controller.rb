@@ -126,15 +126,16 @@ module Spree
           def extract_items_into_package(pkg)
             return if @order.canceled?
             number = 'P' + pkg["id"].to_i.to_s
-            shipcode = pkg["shipcode"].to_s
             tracking = pkg["tracking"].to_s
             line_items = pkg["contents"].to_a
             from_location_name = pkg["from"].to_s
-            date_shipped = Time.parse(pkg["date"].to_s)
 
             from_location = Spree::StockLocation.find_or_create_by!(name: from_location_name) { |l| l.admin_name = from_location_name }
 
-            if @order.shipments.exists?([ "number = ? OR number LIKE ?", number, "#{number}-%" ]) # tolerate Spree's disambiguative renaming
+            shipment = @order.shipments.first([ "number = ? OR number LIKE ?", number, "#{number}-%" ]) # tolerate Spree's disambiguative renaming
+            if shipment
+              apply_shipcode shipment, pkg
+              shipment.save!
               return # idempotence
               # TODO: not sure if we should allow adding stuff after the shipment ships
             end
@@ -160,16 +161,8 @@ module Spree
             end
 
             shipment.save!
-            shipment.shipping_rates.delete_all
-            shipment.cost = 0.to_d
 
-            if shipment.respond_to? :retailops_set_tracking
-              shipment.retailops_set_tracking(pkg)
-            else
-              apply_shipcode shipment, shipcode
-              shipment.tracking = tracking
-              shipment.created_at = date_shipped
-            end
+            apply_shipcode shipment, pkg
 
             shipment.state = 'ready'
             shipment.finalize!
@@ -181,7 +174,16 @@ module Spree
             @order.update!
           end
 
-          def apply_shipcode(shipment, shipcode)
+          def apply_shipcode(shipment, pkg)
+            if shipment.respond_to? :retailops_set_tracking
+              shipment.retailops_set_tracking(pkg)
+              return
+            end
+
+            shipcode = pkg["shipcode"].to_s
+            shipment.tracking = pkg['tracking'].to_s
+            shipment.created_at = Time.parse(pkg['date'].to_s)
+
             # ShippingMethod|extrafield:value|extrafield:value
             method, *fields = shipcode.split('|')
             assocs = nil
@@ -200,6 +202,8 @@ module Spree
               end
             end
 
+            shipment.shipping_rates.delete_all
+            shipment.cost = 0.to_d
             shipment.add_shipping_method(advisory_method(method), true)
           end
 
