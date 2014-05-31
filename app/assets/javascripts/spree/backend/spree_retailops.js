@@ -5,7 +5,7 @@ $(document).ready(function () {
     var link = $(this);
     var order_number = link.data('order-number');
     var importable = link.data('importable');
-    var url = Spree.url(Spree.routes.orders_api + '/' + order_number + '/retailops_importable.json');
+    var url = Spree.url(Spree.routes.root + 'api/orders/' + order_number + '/retailops_importable.json');
 
     $.ajax({
       type: 'PUT',
