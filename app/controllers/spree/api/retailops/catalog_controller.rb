@@ -196,16 +196,20 @@ module Spree
               ex_props = {}
               product.product_properties.each { |pp| ex_props[pp.property] = pp }
 
+              sequence = 1
               prop.to_a.each do |kv|
                 prop = memo(:upsert_property, kv["key"]) or next
                 kv["value"].present? or next
 
                 pprop = ex_props.delete(prop) || product.product_properties.build( property: prop )
 
-                if pprop.value != kv["value"]
+                if pprop.value != kv["value"] || pprop.position != sequence
                   pprop.value = kv["value"]
+                  pprop.position = sequence
                   pprop.save!
                 end
+
+                sequence += 1
               end
 
               ex_props.each_value(&:destroy!) if options['delete_old_properties']
