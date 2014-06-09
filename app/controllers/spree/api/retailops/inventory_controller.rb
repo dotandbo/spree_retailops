@@ -35,7 +35,7 @@ module Spree
 
               variant = Variant.find_by(sku: sku) or next
               # Totally OK if the variant doesn't exist, due to races - inventory may be processed first, we'll redo the inventory on catalog push
-              stocker.apply_stock variant, stock
+              stocker.apply_stock variant, stock, ivd['stock_detailed']
             end
           end
 

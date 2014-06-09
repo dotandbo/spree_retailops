@@ -1,7 +1,7 @@
 module Spree
   module Retailops
     class RopStockHelper
-      def apply_stock variant, stock_hash
+      def apply_stock variant, stock_hash, detailed
         @locations ||= {}
         current = {}
 
@@ -18,6 +18,10 @@ module Spree
 
         # zero out unmentioned locations
         current.each { |old_loc, old_qty| old_loc.move variant, -old_qty }
+
+        if detailed && variant.respond_to?(:retailops_notify_inventory)
+          variant.retailops_notify_inventory(detailed)
+        end
       end
     end
   end

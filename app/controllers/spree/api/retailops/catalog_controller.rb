@@ -157,7 +157,7 @@ module Spree
             if !pd["varies"]
               v = variant_list[0]
               variant_list = []
-              %w( images stock tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
+              %w( images stock stock_detailed tax_category weight height depth width cost_price price cost_currency sku var_extend ).each do |c|
                 pd[c] = v[c] if v.has_key?(c)
               end
             end
@@ -284,7 +284,7 @@ module Spree
             end
 
             update_if v, "stock" do |s|
-              (@stocker ||= Spree::Retailops::RopStockHelper.new).apply_stock(variant, s)
+              (@stocker ||= Spree::Retailops::RopStockHelper.new).apply_stock(variant, s, v['stock_detailed'])
             end
           end
 
