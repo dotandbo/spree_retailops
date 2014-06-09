@@ -73,10 +73,12 @@ module Spree
           def with_correlation(dto_in)
             id = dto_in["corr_id"]
             old_id, @current_corr_id = @current_corr_id, id
+            @after_txn = []
             ActiveRecord::Base.transaction do
               yield
               raise ActiveRecord::Rollback if tx_failed?
             end
+            @after_txn.each(&:call) unless tx_failed?
           rescue Exception => exn
             @memo = {} # possibly stale IDs
             @diag << { "corr_id" => id, "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
@@ -276,7 +278,9 @@ module Spree
             end
 
             update_if v, "images" do |imgs|
-              update_images variant.images, imgs
+              @after_txn << lambda do
+                update_images variant.images, imgs
+              end
             end
 
             update_if v, "stock" do |s|
@@ -305,25 +309,29 @@ module Spree
             sequence = 1
 
             imglist.to_a.each do |i|
+              is_new = false
               if imgobj = by_url[i["origin_url"]] || by_filename[i["filename"]]
                 #p "Reusing image: ",i,imgobj
                 stale.delete(imgobj)
               else
+                is_new = true
                 #p "New image: ",i
                 new_file = Paperclip.io_adapters.for(URI(i["url"]))
                 new_file.original_filename = i["filename"]
                 imgobj = imgcoll.build(attachment: new_file)
               end
-              imgobj.alt = i["alt_text"]
-              imgobj.position = sequence if imgobj.position != sequence
+              if is_new || imgobj.alt != i["alt_text"] || imgobj.position != sequence || i["extend"].present?
+                imgobj.alt = i["alt_text"]
+                imgobj.position = sequence
+                apply_extensions imgobj, i["extend"]
+                imgobj.save!
+              end
               sequence += 1
-              apply_extensions imgobj, i["extend"]
-              imgobj.save!
             end
 
             stale.each_key do |i|
               #p "Deleting old image: ",i
-              i.destroy
+              i.destroy!
             end
           end
 
