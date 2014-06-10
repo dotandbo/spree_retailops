@@ -34,6 +34,6 @@ I'm a hard-liner about namespace pollution, so all global names created or inter
 
 * The handling of tracking data can be overridden by defining a method named `retailops_set_tracking` on `Spree::Shipment`.
 
-* To do something interesting with detailed inventory data such as JIT counts, define a method `def retailops_notify_inventory(details); end` on `Spree::Variant`.  The details argument is a hash, which currently resembles `{ "internal" => 5, "jit" => 12, "dropship" => 0 }` although more keys may be defined in the future.  Internal means inventory units available without using any JIT or Dropship provididers; JIT is the increment inventory permitted by allowing JIT, and Dropship likewise.
+* To do something interesting with detailed inventory data such as JIT counts, define a method `def retailops_notify_inventory(details); end` on `Spree::Variant`.  The details argument is a hash, which currently resembles `{ "all" => 12, "by_type" => { "internal" => 5, "jit" => 12, "dropship" => 0 } }` although more keys may be defined in the future.  Internal means inventory units available without using any JIT or Dropship provididers; JIT is the increment inventory permitted by allowing JIT, and Dropship likewise.
 
 Copyright (c) 2014 Gud Technologies, Inc, released under the New BSD License
