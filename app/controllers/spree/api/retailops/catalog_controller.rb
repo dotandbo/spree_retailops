@@ -165,7 +165,7 @@ module Spree
             return add_error("sku not specified") if pd["sku"].empty?
 
             # Try to use the existing SKU to pull up a product
-            ex_variant = Variant.includes(:product).find_by(sku: pd["sku"], deleted_at: nil)
+            ex_variant = Variant.includes(:product).where(sku: pd["sku"], deleted_at: nil).lock.first
             if ex_variant && !ex_variant.is_master
               return add_error("sku number #{ex_variant.sku} is already used as a child sku, and cannot be used as a master here")
             end
@@ -234,7 +234,7 @@ module Spree
             return add_error("no sku specified") if v["sku"].empty?
 
             unless variant
-              variant = Variant.find_by(sku: v["sku"], deleted_at: nil)
+              variant = Variant.where(sku: v["sku"], deleted_at: nil).lock.first
               if variant && variant.is_master
                 return add_error("sku number #{variant.sku} is already used as a master sku, and cannot be used as a child here")
               end
@@ -249,6 +249,10 @@ module Spree
               unless variant
                 # need to create a brand new variant
                 variant = product.variants.new(sku: v["sku"])
+                @after_txn << lambda do
+                  count = Variant.where(sku: v["sku"], deleted_at: nil).count
+                  add_warn "now #{count} variants with sku #{v["sku"]}" if count > 1
+                end
               end
             else
               variant.sku = v["sku"]
