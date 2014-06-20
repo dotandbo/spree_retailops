@@ -33,6 +33,9 @@ module Spree
 
           use_association LineItem, [:adjustments]
           ad_hoc(LineItem, :sku, [:variant]) { |i| i.variant.try(:sku) }
+          ad_hoc(LineItem, :advisory, [:variant]) { |i| p = i.variant.try(:product); i.try(:retailops_is_advisory?) || p.try(:retailops_is_advisory?) || p.try(:is_gift_card) }
+
+          use_association Variant, [:product], false
 
           use_association Shipment, [:adjustments]
           ad_hoc(Shipment, :shipping_method_name, [:shipping_rates]) { |s| s.shipping_method.try(:name) }

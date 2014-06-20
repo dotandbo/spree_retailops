@@ -32,6 +32,8 @@ I'm a hard-liner about namespace pollution, so all global names created or inter
 
 * Any column which you add to the `Order`, `LineItem`, `Shipment`, `Adjustment`, `Address`, `Payment`, or `CreditCard` models will be expressed in the order import data automatically.  Beware that the RetailOps order importer will ignore any unrecognized data until custom development is done within RetailOps itself to use it.
 
+* For products that RetailOps should never attempt to ship, such as gift cards, add a method `retailops_is_advisory?` on `Spree::Product` or `Spree::LineItem`.  The `spree_gift_card` extension is handled automatically if present.
+
 * The handling of tracking data can be overridden by defining a method named `retailops_set_tracking` on `Spree::Shipment`.
 
 * To do something interesting with detailed inventory data such as JIT counts, define a method `def retailops_notify_inventory(details); end` on `Spree::Variant`.  The details argument is a hash, which currently resembles `{ "all" => 12, "by_type" => { "internal" => 5, "jit" => 12, "dropship" => 0 } }` although more keys may be defined in the future.  Internal means inventory units available without using any JIT or Dropship provididers; JIT is the increment inventory permitted by allowing JIT, and Dropship likewise.
