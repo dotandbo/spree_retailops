@@ -195,15 +195,14 @@ module Spree
             end
 
             update_if pd, "properties" do |prop|
-              ex_props = {}
-              product.product_properties.each { |pp| ex_props[pp.property] = pp }
+              ex_props = product.product_properties.to_a
 
               sequence = 1
               prop.to_a.each do |kv|
                 prop = memo(:upsert_property, kv["key"]) or next
                 kv["value"].present? or next
 
-                pprop = ex_props.delete(prop) || product.product_properties.build( property: prop )
+                pprop = ex_props.any?{|p| p.property == prop} ? ex_props.delete_at(ex_props.index{|p| p.property == prop}) : product.product_properties.build( property: prop )
 
                 if pprop.value != kv["value"] || pprop.position != sequence
                   pprop.value = kv["value"]
@@ -214,7 +213,7 @@ module Spree
                 sequence += 1
               end
 
-              ex_props.each_value(&:destroy!) if options['delete_old_properties']
+              ex_props.each(&:destroy!) if options['delete_old_properties']
             end
 
             update_if(pd, "prod_extend") { |e| apply_extensions product, e }
