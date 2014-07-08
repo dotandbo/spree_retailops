@@ -165,7 +165,6 @@ module Spree
             apply_shipcode shipment, pkg
 
             shipment.state = 'ready'
-            shipment.finalize!
             shipment.ship!
             shipment.save!
 
