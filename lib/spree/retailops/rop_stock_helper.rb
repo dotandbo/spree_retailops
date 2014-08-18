@@ -10,12 +10,13 @@ module Spree
           current[si.stock_location] = { stock_item: si, on_hand: si.count_on_hand, backorderable: si.backorderable }
         end
 
+        backorder = detailed && detailed["backorder"] || {}
         stock_hash.each do |locname, qty|
           locname = locname.to_s
           location = @locations[locname] ||= StockLocation.find_or_create_by!(name: locname) { |l| l.admin_name = locname }
 
           old = current.delete(location) || { on_hand: 0, backorderable: false }
-          new = { on_hand: qty, backorderable: detailed["backorder"][locname] ? true : false }
+          new = { on_hand: qty, backorderable: backorder[locname] ? true : false }
 
           stock_item = old[:stock_item] || location.stock_item_or_create(variant)
 
