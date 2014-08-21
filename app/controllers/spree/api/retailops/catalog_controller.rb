@@ -166,13 +166,16 @@ module Spree
 
             # Try to use the existing SKU to pull up a product
             ex_variant = Variant.includes(:product).where(sku: pd["sku"], deleted_at: nil).lock.first
+            product = nil
             if ex_variant && !ex_variant.is_master
-              return add_error("sku number #{ex_variant.sku} is already used as a child sku, and cannot be used as a master here")
+              # HERE promoting this variant to be the master of a new product.  the new product is created, and this variant is moved into it and set to master
+              product = Product.new { |p| p.master = ex_variant }
+            elsif ex_variant
+              product = ex_variant.product || Product.new
+            else
+              # no product?  OK then
+              product = Product.new
             end
-            product = ex_variant && ex_variant.product
-
-            # no product?  OK then
-            product ||= Product.new
 
             # Update product attributes
             update_if(pd, "tax_category") { |cat| product.tax_category = memo(:upsert_tax_category, cat) }
@@ -235,7 +238,13 @@ module Spree
             unless variant
               variant = Variant.where(sku: v["sku"], deleted_at: nil).lock.first
               if variant && variant.is_master
-                return add_error("sku number #{variant.sku} is already used as a master sku, and cannot be used as a child here")
+                # HERE this existing master variant is about to become a non-master variant
+                old_product = variant.product
+                variant.product = product
+                variant.is_master = false
+                variant.save!
+                old_product.master = nil
+                old_product.destroy || raise('failed to delete product aspect of product being converted into variant')
               end
 
               if variant && variant.product_id != product.id
