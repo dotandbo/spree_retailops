@@ -103,6 +103,97 @@ module Spree
           Order.where(retailops_import: 'yes', id: ids).update_all(retailops_import: 'done')
           render text: {}.to_json
         end
+
+        def synchronize
+          authorize! :update, Order
+          changed = false
+          result = []
+          order = Order.find_by!(number: params["order_refnum"].to_s)
+          ActiveRecord::Base.transaction do
+
+            # RetailOps will be sending in an authoritative (potentially updated) list of line items
+            # We make our data match that as well as possible, and then send the list back annotated with channel_refnums and quantities/costs/etc
+
+            used_v = {}
+
+            params["line_items"].to_a.each do |lirec|
+              corr = lirec["corr"].to_s
+              sku  = lirec["sku"].to_s
+              qty  = lirec["quantity"].to_i
+              eshp = Time.at(lirec["estimated_ship_date"].to_i)
+              cost = BigDecimal.new(lirec["estimated_cost"].to_f, 2)
+              extra = lirec["ext"] || {}
+
+              variant = Spree::Variant.find_by(sku: sku)
+              next unless variant
+              next if qty <= 0
+              next if used_v[variant]
+              used_v[variant] = true
+
+              li = order.find_line_item_by_variant(variant)
+              oldqty = li ? li.quantity : 0
+
+              next if !li && qty == oldqty # should be caught by <= 0
+
+              if qty > oldqty
+                changed = true
+                # make sure the shipment that will be used, exists
+                # expanded for 2.1.x compat
+                shipment = order.shipments.detect do |shipment|
+                  (shipment.ready? || shipment.pending?) && shipment.include?(variant)
+                end
+
+                shipment ||= order.shipments.detect do |shipment|
+                  (shipment.ready? || shipment.pending?) && variant.stock_location_ids.include?(shipment.stock_location_id)
+                end
+
+                unless shipment
+                  shipment = order.shipments.build
+                  shipment.state = 'ready'
+                  shipment.stock_location_id = variant.stock_location_ids[0]
+                  shipment.save!
+                end
+
+                li = order.contents.add(variant, qty - oldqty, nil, shipment)
+              elsif qty < oldqty
+                changed = true
+                li = order.contents.remove(variant, oldqty - qty)
+              end
+
+              if li.cost_price != cost
+                changed = true
+                li.update!(cost_price: cost)
+              end
+
+              if li.respond_to?(:estimated_ship_date=) && li.estimated_ship_date != eshp
+                changed = true
+                li.update!(estimated_ship_date: eshp)
+              end
+
+              if li.respond_to?(:retailops_set_estimated_ship_date)
+                changed = true if li.retailops_set_estimated_ship_date(eshp)
+              end
+
+              if li.respond_to?(:retailops_extension_writeback)
+                changed = true if li.retailops_extension_writeback(extra)
+              end
+
+              result << { corr: corr, refnum: li.id, quantity: li.quantity }
+            end
+
+            order.line_items.each do |li|
+              next if used_v[li.variant]
+              order.contents.remove(li.variant, li.quantity)
+              changed = true
+            end
+          end
+
+          render text: {
+            changed: changed,
+            dump: Extractor.walk_order_obj(order),
+            result: result,
+          }.to_json
+        end
       end
     end
   end
