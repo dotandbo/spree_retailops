@@ -121,7 +121,6 @@ module Spree
               sku  = lirec["sku"].to_s
               qty  = lirec["quantity"].to_i
               eshp = Time.at(lirec["estimated_ship_date"].to_i)
-              cost = BigDecimal.new(lirec["estimated_cost"].to_f, 2)
               extra = lirec["ext"] || {}
 
               variant = Spree::Variant.find_by(sku: sku)
@@ -132,6 +131,14 @@ module Spree
 
               li = order.find_line_item_by_variant(variant)
               oldqty = li ? li.quantity : 0
+
+              if lirec["removed"]
+                if li
+                  order.contents.remove(li.variant, li.quantity)
+                  changed = true
+                end
+                next
+              end
 
               next if !li && qty == oldqty # should be caught by <= 0
 
@@ -160,9 +167,20 @@ module Spree
                 li = order.contents.remove(variant, oldqty - qty)
               end
 
-              if li.cost_price != cost
-                changed = true
-                li.update!(cost_price: cost)
+              if lirec["estimated_unit_cost"]
+                cost = BigDecimal.new(lirec["estimated_unit_cost"].to_f, 2)
+                if li.cost_price != cost
+                  changed = true
+                  li.update!(cost_price: cost)
+                end
+              end
+
+              if lirec["unit_price"]
+                price = BigDecimal.new(lirec["unit_price"], 2)
+                if li.price != price
+                  li.update!(price: price)
+                  changed = true
+                end
               end
 
               if li.respond_to?(:estimated_ship_date=) && li.estimated_ship_date != eshp
@@ -181,10 +199,9 @@ module Spree
               result << { corr: corr, refnum: li.id, quantity: li.quantity }
             end
 
-            order.line_items.each do |li|
-              next if used_v[li.variant]
-              order.contents.remove(li.variant, li.quantity)
-              changed = true
+            # omitted RMAs are treated as 'no action'
+            params["rmas"].to_a.each do |rma|
+              changed = true if sync_rma order, rma
             end
           end
 
@@ -193,6 +210,89 @@ module Spree
             dump: Extractor.walk_order_obj(order),
             result: result,
           }.to_json
+        end
+
+        def sync_rma(order, rma)
+          # This is half of the RMA/return push mechanism: it handles RMAs created in RetailOps by
+          # creating matching RMAs in Spree numbered RMA-ROP-NNN.  Any inventory which has been
+          # returned in RetailOps will have a corresponding RetailOps return; if that exists in
+          # Spree, then we *exclude* that inventory from the RMA being created and delete the RMA
+          # when all items are removed.
+
+          # find Spree RMA.  bail out if received (shouldn't happen)
+          return unless order.shipped_shipments.any?  # avoid RMA create failures
+          rop_rma_str = "RMA-RO-#{rma["id"].to_i}"
+          rma_obj = order.return_authorizations.detect { |r| r.number == rop_rma_str }
+          return if rma_obj && rma_obj.received?
+
+          # for each ROP return: check if it exists in Spree.  Reduce RMA amount for returns that
+          # have been filed.
+
+          closed_value = BigDecimal.new(0)
+          closed_items = {}
+
+          rma["returns"].to_a.each do |ret|
+            ret_str = "RMA-RET-#{ret["id"].to_i}"
+            ret_obj = order.return_authorizations.detect { |r| r.number == ret_str }
+
+            if ret_obj && ret_obj.received?
+              closed_value += BigDecimal.new(ret["refund_amt"],2)
+              ret["items"].to_a.each do |it|
+                it_obj = order.line_items.detect { |i| i.id.to_s == it["channel_refnum"].to_s }
+                closed_items[it_obj] = (closed_items[it_obj] || 0) + it["quantity"].to_i if it_obj
+              end
+            end
+          end
+
+          use_items = {}
+          use_total = 0
+
+          rma["items"].to_a.each do |it|
+            line = order.line_items.detect { |i| i.id.to_s == it["channel_refnum"].to_s } or next
+            use_items[line] = [ 0, it["quantity"].to_i - (closed_items[line] || 0) ].max
+          end
+
+          use_items.each do |li, qty|
+            use_total += qty
+          end
+
+          # create RMA if not exists and items > 0
+          return if !rma_obj && use_total <= 0
+
+          unless rma_obj
+            rma_obj = order.return_authorizations.build
+            rma_obj.number = rop_rma_str
+            rma_obj.save! # have an ID *before* adding items
+            changed = true
+          end
+
+          # set RMA item quantities
+
+          changed = false
+
+          order.line_items.each do |li|
+            # this function is misnamed, it sets, it does not add
+            changed = true # use rma_obj.inventory_units to identify changes if it ever becomes necessary
+            rma_obj.add_variant(li.variant_id, use_items[li] || 0)
+          end
+
+          # delete RMA if all items gone
+          if use_total == 0
+            rma_obj.destroy!
+            return true
+          end
+
+          # set RMA amount
+          if rma["refund_amt"].present?
+            use_value = BigDecimal.new(rma["refund_amt"],2) - closed_value
+            if use_value != rma_obj.amount
+              rma_obj.amount = use_value
+              changed = true
+            end
+          end
+
+          rma_obj.save! if changed
+          return true
         end
       end
     end

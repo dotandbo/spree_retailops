@@ -64,7 +64,7 @@ module Spree
         def add_refund
           ActiveRecord::Base.transaction do
             find_order
-            assert_refund_adjustments params['refund_items'], false
+            assert_return params
             @order.update!
           end
           settle_payments_if_desired
@@ -216,6 +216,75 @@ module Spree
 
           def collected_units_for_line_item(li)
             @existing_units[ InvUnitsByLineItem ? li.id : li.variant_id ] ||= []
+          end
+
+          def assert_return(info)
+            # find Spree return, bail out if exists
+            rop_return_id = info["return_id"].to_i
+            rop_rma_id = info["rma_id"].to_i # may be nil->0
+
+            return_obj = @order.return_authorizations.detect { |r| r.number == "RMA-RET-#{rop_return_id}" }
+            deduct_rma_obj = @order.return_authorizations.detect { |r| r.number == "RMA-RO-#{rop_rma_id}" }
+
+            return if return_obj # if it exists but isn't received we're in a pretty weird state because we're supposed to receive in the same txn we create
+
+            # count up current inventory units, verify inventory for the return
+            # NOTE: spree 2.1.6 does not do per-line-item inventory units
+            return_by_variant = {}
+
+            info["return_items"].present? or throw "cannot push empty return"
+            @order.shipped_shipments.any? or throw "order is not shipped"
+            info["return_items"].to_a.each do |ri|
+              liid = ri["channel_refnum"].to_i
+              li = @order.line_items.detect { |l| l.id == liid }
+              return_by_variant[li.variant] = ri["quantity"].to_i if li
+            end
+
+            # always decrement for the RMA which we are receiving against, if there is one and it has been pushed to Spree already
+            # if we can't satisfy the return from the named RMA, pull stuff from other RMAs
+
+            eligible_rmas = @order.return_authorizations.with_state('authorized').reject { |r| r == deduct_rma_obj }.to_a
+            eligible_rmas.unshift(deduct_rma_obj) if deduct_rma_obj
+            modified_rmas = []
+
+            return_by_variant.each do |var,qty|
+              eligible_rmas.each do |rma|
+                qty_here = rma.inventory_units.where(variant_id: var.id).size
+                take = [ qty_here, qty ].max
+                if take > 0
+                  qty -= take
+                  rma.add_variant(var.id, qty_here - take)
+                  modified_rmas << rma
+                end
+              end
+            end
+
+            modified_rmas.uniq.each do |r|
+              r.destroy! if r.inventory_units.reload.empty?
+            end
+
+            # if room can be made, room has been made
+
+            # create an RMA for our return
+            return_obj = @order.return_authorizations.build
+            return_obj.number = "RMA-RET-#{rop_return_id}"
+            return_obj.stock_location_id = @order.shipped_shipments.first.stock_location_id # anything will be wrong since we don't want spree to restock :x
+            return_obj.save! # needs an ID before we can add stuf
+
+            sloc = Spree::StockLocation.find(return_obj.stock_location_id) # "rma.stock_location" crashes.  possible has_one/has_many mixup?
+            return_by_variant.each do |var,qty|
+              sloc.set_up_stock_item(var) # receive! crashes if there is no stock item
+              return_obj.add_variant(var.id, qty)
+            end
+
+            # optionally check completeness here?
+
+            # set value
+            return_obj.amount = BigDecimal.new(info['refund_amt'],2)
+            return_obj.save!
+
+            # receive it
+            return_obj.receive!
           end
 
           def assert_refund_adjustments(refunds, cancel_ship)
