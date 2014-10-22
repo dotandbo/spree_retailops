@@ -80,6 +80,7 @@ module Spree
             end
             @after_txn.each(&:call) unless tx_failed?
           rescue Exception => exn
+            logger.error("Catalog operation failed: %p" % exn)
             @memo = {} # possibly stale IDs
             @diag << { "corr_id" => id, "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
           ensure
