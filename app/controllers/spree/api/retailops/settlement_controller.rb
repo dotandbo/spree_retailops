@@ -31,7 +31,7 @@ module Spree
         def add_packages
           ActiveRecord::Base.transaction do
             find_order
-            separate_shipment_costs
+            @order_helper.separate_shipment_costs(@order)
             params["packages"].to_a.each do |pkg|
               extract_items_into_package pkg
             end
@@ -53,7 +53,7 @@ module Spree
         def mark_complete
           ActiveRecord::Base.transaction do
             find_order
-            separate_shipment_costs
+            @order_helper.separate_shipment_costs(@order)
             assert_refund_adjustments params['refund_items'], true
             @order.update!
           end
@@ -88,39 +88,10 @@ module Spree
           def find_order
             @order = Order.find_by!(number: params["order_refnum"].to_s)
             authorize! :update, @order
-          end
 
-          # To prevent Spree from trying to recalculate shipment costs as we
-          # create and delete shipments, transfer shipping costs to order
-          # adjustments
-          def separate_shipment_costs
-            return if @order.canceled?
-            extracted_total = 0.to_d
-            @order.shipments.each do |shipment|
-              # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
-              # Spree 2.2.x: shipments have a cost which is authoritative, and one or more adjustments (shiptax, etc)
-              cost = if shipment.respond_to?(:adjustment)
-                shipment.adjustment.try(:amount) || 0.to_d
-              else
-                shipment.cost + shipment.adjustment_total
-              end
-
-              if cost > 0
-                extracted_total += cost
-                shipment.adjustment.open if shipment.respond_to? :adjustment
-                shipment.adjustments.delete_all if shipment.respond_to? :adjustments
-                shipment.shipping_rates.delete_all
-                shipment.cost = 0
-                shipment.add_shipping_method(rop_tbd_method, true)
-                shipment.save!
-              end
-            end
-
-            if extracted_total > 0
-              # TODO: is Standard Shipping the best name for this?  Should i18n happen?
-              @order.adjustments.create(amount: extracted_total, label: "Standard Shipping", mandatory: false)
-              @order.save!
-            end
+            @order_helper = RopOrderHelper.new
+            @order_helper.order = @order
+            @order_helper.options = options
           end
 
           def extract_items_into_package(pkg)
@@ -205,7 +176,7 @@ module Spree
 
             shipment.shipping_rates.delete_all
             shipment.cost = 0.to_d
-            shipment.add_shipping_method(advisory_method(method), true)
+            shipment.add_shipping_method(@order_helper.advisory_method(method), true)
           end
 
           InvUnitsByLineItem = Spree::InventoryUnit.column_names.include? 'line_item_id'
@@ -367,28 +338,6 @@ module Spree
             @order.payments.select{|op| op.amount > 0}.each do |op|
               @settlement_results["status"] << { "id" => op.id, "state" => op.state, "amount" => op.amount, "credit" => op.offsets_total.abs }
             end
-          end
-
-          def rop_tbd_method
-            advisory_method(options["partial_ship_name"] || "Partially shipped")
-          end
-
-          # Find or create an advisory (not selectable) shipping method to represent how ROP shipped this item
-          def advisory_method(name)
-            use_any_method = options["use_any_method"]
-            @advisory_methods ||= {}
-            unless @advisory_methods[name]
-              @advisory_methods[name] = ShippingMethod.where(admin_name: name).detect { |s| use_any_method || s.calculator.is_a?(Spree::Calculator::Shipping::RetailopsAdvisory) }
-            end
-
-            unless @advisory_methods[name]
-              raise "Advisory shipping method #{name} does not exist and automatic creation is disabled" if options["no_auto_shipping_methods"]
-              @advisory_methods[name] = ShippingMethod.create!(name: name, admin_name: name) do |m|
-                m.calculator = Spree::Calculator::Shipping::RetailopsAdvisory.new
-                m.shipping_categories << ShippingCategory.first
-              end
-            end
-            @advisory_methods[name]
           end
       end
     end
