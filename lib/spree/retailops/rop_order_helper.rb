@@ -7,7 +7,8 @@ module Spree
       # create and delete shipments, transfer shipping costs to order
       # adjustments
       def separate_shipment_costs
-        return if @order.canceled?
+        changed = false
+        return false if @order.canceled?
         extracted_total = 0.to_d
         @order.shipments.each do |shipment|
           # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
@@ -26,6 +27,7 @@ module Spree
             shipment.cost = 0
             shipment.add_shipping_method(rop_tbd_method, true)
             shipment.save!
+            changed = true
           end
         end
 
@@ -33,9 +35,11 @@ module Spree
           # TODO: is Standard Shipping the best name for this?  Should i18n happen?
           @order.adjustments.create(amount: extracted_total, label: "Standard Shipping", mandatory: false)
           @order.save!
+          changed = true
         end
-      end
 
+        return changed
+      end
 
       def rop_tbd_method
         advisory_method(options["partial_ship_name"] || "Partially shipped")

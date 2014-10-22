@@ -204,6 +204,10 @@ module Spree
             params["rmas"].to_a.each do |rma|
               changed = true if sync_rma order, rma
             end
+
+            if params["shipping_amt"]
+              changed = true if sync_shipping_amt order, BigDecimal.new(params["shipping_amt"], 2)
+            end
           end
 
           render text: {
@@ -211,6 +215,29 @@ module Spree
             dump: Extractor.walk_order_obj(order),
             result: result,
           }.to_json
+        end
+
+        def sync_shipping_amt(order, amt)
+          changed = false
+
+          helper = RopOrderHelper.new
+          helper.order = order
+          helper.options = params["options"]
+          changed = true if helper.separate_shipment_costs
+
+          # All Spree shipment charges have been transmogrified to a "Standard Shipping" adjustment.  Need a non-label-based way to identify these
+
+          adj = order.adjustments.detect { |a| a.label == 'Standard Shipping' } #XXX
+          adj_amt = adj ? adj.amount : 0
+
+          if adj_amt != amt
+            changed = true
+            adj ||= order.adjustments.create(amount: amt, label: "Standard Shipping", mandatory: false)
+            adj.amount = amt
+            adj.save!
+          end
+
+          return changed
         end
 
         def sync_rma(order, rma)
