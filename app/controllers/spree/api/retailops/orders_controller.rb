@@ -194,6 +194,9 @@ module Spree
               end
 
               if li.respond_to?(:retailops_extension_writeback)
+                # well-known extensions - known to ROP but not Spree
+                extra["direct_ship_amt"] = BigDecimal.new(lirec["direct_ship_amt"], 2) if lirea["direct_ship_amt"]
+                extra["apportioned_ship_amt"] = BigDecimal.new(lirec["apportioned_ship_amt"], 2) if lirec["apportioned_ship_amt"]
                 changed = true if li.retailops_extension_writeback(extra)
               end
 
@@ -206,8 +209,35 @@ module Spree
             end
 
             if params["shipping_amt"]
-              changed = true if sync_shipping_amt order, BigDecimal.new(params["shipping_amt"], 2)
+              if order.respond_to?(:retailops_set_shipping_amt)
+                total = BigDecimal.new(params["shipping_amt"], 2)
+                item_level = BigDecimal.new(0,2) + params['line_items'].to_a.collect{ |l| BigDecimal.new(l['direct_ship_amt'], 2) }.sum
+
+                changed = true if order.retailops_set_shipping_amt(
+                  total_shipping_amt: total
+                  order_shipping_amt: total - item_level
+                )
+              else
+                changed = true if sync_shipping_amt order, BigDecimal.new(params["shipping_amt"], 2)
+              end
             end
+
+            # get tax/discount totals from RetailOps and create adjustments for any discrepancy
+            if params["tax_amt"]
+              tax_amt = BigDecimal.new(params["tax_amt"],2)
+              changed = true if order.respond_to?(:retailops_set_order_tax) ? order.retailops_set_order_tax(tax_amt) : set_order_tax(order, tax_amt)
+            end
+
+            if params["discount_amt"]
+              discount_amt = BigDecimal.new(params["discount_amt"],2)
+              changed = true if order.respond_to?(:retailops_set_order_discount_amount) ? order.retailops_set_order_discount_amount(discount_amt) : set_order_discount(order, discount_amt)
+            end
+
+            if order.respond_to?(:retailops_after_writeback)
+              order.retailops_after_writeback(params)
+            end
+
+            order.update! if changed
           end
 
           render text: {
@@ -215,6 +245,34 @@ module Spree
             dump: Extractor.walk_order_obj(order),
             result: result,
           }.to_json
+        end
+
+        def set_order_tax(order, tax_amt)
+          apparent_tax_amt = order.respond_to?(:additional_tax_total) ? order.additional_tax_total : order.tax_total
+          set_discrepancy_adjustment(order, 'Tax set in RetailOps', tax_amt, apparent_tax_amt, false)
+        end
+
+        def set_order_discount(order, discount_amt)
+          apparent_discount_amt = order.try(:discount_total) || order.adjustment_total
+          set_discrepancy_adjustment(order, 'Discount set in RetailOps', discount_amt, apparent_discount_amt, true)
+        end
+
+        def set_discrepancy_adjustment(order, label, rop_amt, apparent_amt, adj_included_in_apparent)
+          adj = order.adjustments.detect { |a| a.label == label }
+          adj_amt = adj ? adj.amount : 0
+          apparent_amt -= adj_amt if adj_included_in_apparent
+          changed = false
+
+          if rop_amt != apparent_amt
+            changed = true
+            adj ||= order.adjustments.create(amount: rop_amt - apparent_amt, label: label, mandatory: false)
+            adj.amount = rop_amt - apparent_amt
+            adj.save!
+          end
+
+          return changed
+        end
+
         end
 
         def sync_shipping_amt(order, amt)
