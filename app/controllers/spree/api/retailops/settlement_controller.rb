@@ -89,7 +89,7 @@ module Spree
             @order = Order.find_by!(number: params["order_refnum"].to_s)
             authorize! :update, @order
 
-            @order_helper = RopOrderHelper.new
+            @order_helper = Spree::Retailops::RopOrderHelper.new
             @order_helper.order = @order
             @order_helper.options = options
           end

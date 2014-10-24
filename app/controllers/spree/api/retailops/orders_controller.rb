@@ -214,7 +214,7 @@ module Spree
                 item_level = BigDecimal.new(0,2) + params['line_items'].to_a.collect{ |l| BigDecimal.new(l['direct_ship_amt'], 2) }.sum
 
                 changed = true if order.retailops_set_shipping_amt(
-                  total_shipping_amt: total
+                  total_shipping_amt: total,
                   order_shipping_amt: total - item_level
                 )
               else
@@ -223,14 +223,17 @@ module Spree
             end
 
             # get tax/discount totals from RetailOps and create adjustments for any discrepancy
-            if params["tax_amt"]
-              tax_amt = BigDecimal.new(params["tax_amt"],2)
-              changed = true if order.respond_to?(:retailops_set_order_tax) ? order.retailops_set_order_tax(tax_amt) : set_order_tax(order, tax_amt)
-            end
+            # discount done first because it makes assumptions about nonstaleness
+            order.update! if changed
 
             if params["discount_amt"]
               discount_amt = BigDecimal.new(params["discount_amt"],2)
               changed = true if order.respond_to?(:retailops_set_order_discount_amount) ? order.retailops_set_order_discount_amount(discount_amt) : set_order_discount(order, discount_amt)
+            end
+
+            if params["tax_amt"]
+              tax_amt = BigDecimal.new(params["tax_amt"],2)
+              changed = true if order.respond_to?(:retailops_set_order_tax) ? order.retailops_set_order_tax(tax_amt) : set_order_tax(order, tax_amt)
             end
 
             if order.respond_to?(:retailops_after_writeback)
@@ -254,6 +257,11 @@ module Spree
 
         def set_order_discount(order, discount_amt)
           apparent_discount_amt = order.try(:discount_total) || order.adjustment_total
+          # Fudge: ROP tax adjustments are interpreted by Spree as discounts
+          tax_adj = order.adjustments.detect{ |a| a.label == 'Tax set in RetailOps' }
+          if tax_adj
+            apparent_discount_amt -= tax_adj.amount
+          end
           set_discrepancy_adjustment(order, 'Discount set in RetailOps', discount_amt, apparent_discount_amt, true)
         end
 
@@ -273,12 +281,10 @@ module Spree
           return changed
         end
 
-        end
-
         def sync_shipping_amt(order, amt)
           changed = false
 
-          helper = RopOrderHelper.new
+          helper = Spree::Retailops::RopOrderHelper.new
           helper.order = order
           helper.options = params["options"]
           changed = true if helper.separate_shipment_costs
