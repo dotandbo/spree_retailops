@@ -241,6 +241,7 @@ module Spree
               if variant && variant.is_master
                 # HERE this existing master variant is about to become a non-master variant
                 old_product = variant.product
+                old_product == product and return add_error('Child SKU cannot be the same as master SKU')
                 variant.product = product
                 variant.is_master = false
                 variant.save!
