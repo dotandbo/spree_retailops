@@ -263,7 +263,7 @@ module Spree
               apparent_discount_amt -= a.amount
             end
           end
-          set_discrepancy_adjustment(order, 'Discount set in RetailOps', discount_amt, apparent_discount_amt, true)
+          set_discrepancy_adjustment(order, 'Discount set in RetailOps', -discount_amt, apparent_discount_amt, true)
         end
 
         def set_discrepancy_adjustment(order, label, rop_amt, apparent_amt, adj_included_in_apparent)
