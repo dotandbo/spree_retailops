@@ -258,9 +258,10 @@ module Spree
         def set_order_discount(order, discount_amt)
           apparent_discount_amt = order.try(:discount_total) || order.adjustment_total
           # Fudge: ROP tax adjustments are interpreted by Spree as discounts
-          tax_adj = order.adjustments.detect{ |a| a.label == 'Tax set in RetailOps' }
-          if tax_adj
-            apparent_discount_amt -= tax_adj.amount
+          order.adjustments.each do |a|
+            if a.label == 'Tax set in RetailOps' || a.label == 'Standard Shipping'
+              apparent_discount_amt -= a.amount
+            end
           end
           set_discrepancy_adjustment(order, 'Discount set in RetailOps', discount_amt, apparent_discount_amt, true)
         end

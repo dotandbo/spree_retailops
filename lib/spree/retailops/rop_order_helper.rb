@@ -42,7 +42,7 @@ module Spree
       end
 
       def rop_tbd_method
-        advisory_method(options["partial_ship_name"] || "Partially shipped")
+        advisory_method(options["partial_ship_name"] || "Unshipped")
       end
 
       # Find or create an advisory (not selectable) shipping method to represent how ROP shipped this item
