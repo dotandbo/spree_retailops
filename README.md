@@ -38,4 +38,14 @@ I'm a hard-liner about namespace pollution, so all global names created or inter
 
 * To do something interesting with detailed inventory data such as JIT counts, define a method `def retailops_notify_inventory(details); end` on `Spree::Variant`.  The details argument is a hash, which currently resembles `{ "all" => 12, "by_type" => { "internal" => 5, "jit" => 12, "dropship" => 0 } }` although more keys may be defined in the future.  Internal means inventory units available without using any JIT or Dropship provididers; JIT is the increment inventory permitted by allowing JIT, and Dropship likewise.
 
+* `Spree::Order#retailops_set_shipping_amt(total_shipping_amt: total, order_shipping_amt: order_level)`: Define this to override the default behavior of shipping amounts pushed from RetailOps, which is to convert all shipping costs into a `Standard Shipping` adjustment and then adjust that.  Both arguments are `BigDecimal`; `total_shipping_amt` is the shipping total from RetailOps, while `order_shipping_amt` excludes shipping amounts on line items (use this if you plan to handle line-item shipping separately).  More keyword arguments may be added in the future. _This method, and the subsequent four through `retailops_extension_writeback`, are expected to return a true value if changes were made.  This is intended to avoid redundant `save!` calls, but it is safe to always return true._
+
+* `Spree::Order#retailops_set_order_discount_amount(amount)`: Define this to override the default behavior of discount amounts pushed, which is to create or update a "Discount set in RetailOps" adjustment.  `amount` is BigDecimal.
+
+* `Spree::Order#retailops_set_order_tax(amount)`: Define this to override the default behavior of tax amounts pushed, which is to create or update a "Tax set in RetailOps" adjustment.  `amount` is BigDecimal.
+
+* `Spree::Order#retailops_after_writeback(hash)`: Define this to perform arbitrary processing after a writeback cycle.  The argument is the raw RetailOps order data transfer object, whose format is not yet fully stabilized.
+
+* `Spree::LineItem#retailops_extension_writeback(hash)`: Define this to accept per-line-item data which is not handled by stock Spree.  Two hash keys are currently defined, `direct_ship_amt` which is a BigDecimal shipping amount for the specific line item (not including order-wide shipping charges), and `apportioned_ship_amt` which is that line item's share of the order shipping (as would be used for refunds).
+
 Copyright (c) 2014 Gud Technologies, Inc, released under the New BSD License
