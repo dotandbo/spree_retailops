@@ -80,7 +80,8 @@ module Spree
             end
             @after_txn.each(&:call) unless tx_failed?
           rescue Exception => exn
-            logger.error("Catalog operation failed: %p" % exn)
+            # XXX self.logger is nil here, why?
+            Rails.logger.error("Catalog operation failed: #{exn.to_s}:\n  #{exn.backtrace * "\n  "}")
             @memo = {} # possibly stale IDs
             @diag << { "corr_id" => id, "message" => exn.to_s, "failed" => true, "trace" => exn.backtrace }
           ensure

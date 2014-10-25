@@ -87,7 +87,7 @@ module Spree
             begin
               Extractor.walk_order_obj(o)
             rescue Exception => ex
-              logger.error("Order fetch failed: %p" % ex)
+              Rails.logger.error("Order export failed: #{ex.to_s}:\n  #{ex.backtrace * "\n  "}")
               { "error" => ex.to_s, "trace" => ex.backtrace, "number" => o.number }
             end
           }.to_json
