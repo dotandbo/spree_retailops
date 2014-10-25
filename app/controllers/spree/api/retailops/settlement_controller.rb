@@ -31,7 +31,7 @@ module Spree
         def add_packages
           ActiveRecord::Base.transaction do
             find_order
-            @order_helper.separate_shipment_costs(@order)
+            @order_helper.separate_shipment_costs
             params["packages"].to_a.each do |pkg|
               extract_items_into_package pkg
             end
@@ -53,7 +53,7 @@ module Spree
         def mark_complete
           ActiveRecord::Base.transaction do
             find_order
-            @order_helper.separate_shipment_costs(@order)
+            @order_helper.separate_shipment_costs
             assert_refund_adjustments params['refund_items'], true
             @order.update!
           end
