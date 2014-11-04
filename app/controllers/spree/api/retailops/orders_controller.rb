@@ -195,7 +195,7 @@ module Spree
 
               if li.respond_to?(:retailops_extension_writeback)
                 # well-known extensions - known to ROP but not Spree
-                extra["direct_ship_amt"] = BigDecimal.new(lirec["direct_ship_amt"], 2) if lirea["direct_ship_amt"]
+                extra["direct_ship_amt"] = BigDecimal.new(lirec["direct_ship_amt"], 2) if lirec["direct_ship_amt"]
                 extra["apportioned_ship_amt"] = BigDecimal.new(lirec["apportioned_ship_amt"], 2) if lirec["apportioned_ship_amt"]
                 changed = true if li.retailops_extension_writeback(extra)
               end
