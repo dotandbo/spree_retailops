@@ -170,7 +170,7 @@ module Spree
 
               if lirec["estimated_unit_cost"]
                 cost = BigDecimal.new(lirec["estimated_unit_cost"].to_f, 2)
-                if li.cost_price != cost
+                if cost > 0 and li.cost_price != cost
                   changed = true
                   li.update!(cost_price: cost)
                 end
