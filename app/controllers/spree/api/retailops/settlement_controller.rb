@@ -138,8 +138,12 @@ module Spree
             shipment.state = 'ready'
             shipment.ship!
             shipment.save!
-
-            @order.shipments.each { |s| s.reload; s.destroy! if s.inventory_units.empty? }
+            
+            @order.shipments.reload
+            @order.shipments.each do |s| 
+                s.reload 
+                s.destroy! if s.manifest.empty? 
+            end
             @order.reload
             @order.update!
           end
@@ -278,10 +282,6 @@ module Spree
             @order.reload
           end
 
-          def delete_unshipped_shipments
-            return if @order.canceled?
-            @order.shipments.reject(&:shipped?).each{ |s| s.cancel!; s.destroy! }
-          end
 
           # If something goes wrong with a multi-payment order, we want to log
           # it and keep going.  We may get what we need from other payments,
