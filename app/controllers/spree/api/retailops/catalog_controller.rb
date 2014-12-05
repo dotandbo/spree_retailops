@@ -43,6 +43,10 @@ module Spree
           Spree::Retailops::CatalogPushJob.perform_later(products, params)
 
           render text: { "import_results" => @diag }.to_json
+        rescue Exception => ex
+          puts ex.message
+          puts ex.backtrace
+          raise ex
         end
       end
     end
