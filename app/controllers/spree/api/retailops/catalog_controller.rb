@@ -27,8 +27,6 @@ module Spree
       # can associate errors with the correct thing.
 
       class CatalogController < Spree::Api::BaseController
-        include CatalogHelpers
-
         def catalog_push
           # actually a lot more privs maybe?
           authorize! :create, Product
@@ -41,11 +39,8 @@ module Spree
             params["products"]
           end
 
-          @diag = []
-          @memo = {}
-          @failed = {}
-
-          Spree::Retailops::CatalogJob.perform_later(products, params)
+          @diag, @memo, @failed = [], {}, {}
+          Spree::Retailops::CatalogPushJob.perform_later(products, params)
 
           render text: { "import_results" => @diag }.to_json
         end
