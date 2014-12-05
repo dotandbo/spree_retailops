@@ -1,6 +1,6 @@
-class Jobs::Spree::Retailops::CatalogPushJob < ActiveJob::Base
+class Spree::Retailops::CatalogPushJob# < ActiveJob::Base
   include Spree::Retailops::CatalogHelper
-  queue_as :default
+  #queue_as :default
 
   attr_reader :params
 

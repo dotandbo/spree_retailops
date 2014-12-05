@@ -39,6 +39,9 @@ require 'spree/api/testing_support/setup'
 require 'spree_retailops/factories'
 
 RSpec.configure do |config|
+  config.infer_spec_type_from_file_location!
+  config.expose_current_running_example_as :example
+
   config.include FactoryGirl::Syntax::Methods
   config.include Spree::Api::TestingSupport::Helpers, :type => :controller
   config.extend Spree::Api::TestingSupport::Setup, :type => :controller
