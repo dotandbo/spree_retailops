@@ -1,4 +1,7 @@
 require 'spree_core'
+require 'active_job'
 require 'spree_retailops/engine'
 require 'spree/retailops/rop_stock_helper'
 require 'spree/retailops/rop_order_helper'
+require 'spree/retailops/catalog_helper'
+require 'jobs/spree/retailops/catalog_push_job'
