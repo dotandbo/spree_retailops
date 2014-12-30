@@ -21,6 +21,9 @@ module Spree
       # to just ignore this.
 
       class InventoryController < Spree::Api::BaseController
+
+        before_action :log_request
+
         def inventory_push
           authorize! :create, StockLocation
           authorize! :create, StockItem

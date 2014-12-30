@@ -2,6 +2,9 @@ module Spree
   module Api
     module Retailops
       class OrdersController < Spree::Api::BaseController
+
+        before_action :log_request
+
         # This function handles fetching order data for RetailOps.  In the spirit of
         # pushing as much maintainance burden as possible onto RetailOps and not
         # requiring different versions per client, we return data in a fairly raw

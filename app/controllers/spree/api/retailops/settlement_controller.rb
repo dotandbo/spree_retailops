@@ -2,6 +2,9 @@ module Spree
   module Api
     module Retailops
       class SettlementController < Spree::Api::BaseController
+
+        before_action :log_request
+
         # "Settlement" subsystem - called by ROP when there are large changes in the status of the order.
         #
         # * First we add zero or more "packages" of things we were able to ship.

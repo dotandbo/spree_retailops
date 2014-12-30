@@ -27,6 +27,9 @@ module Spree
       # can associate errors with the correct thing.
 
       class CatalogController < Spree::Api::BaseController
+
+        before_action :log_request
+
         def catalog_push
           # actually a lot more privs maybe?
           authorize! :create, Product
