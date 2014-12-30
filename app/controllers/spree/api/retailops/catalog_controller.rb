@@ -59,6 +59,7 @@ module Spree
           def add_error(msg)
             @failed[@current_corr_id] = true
             @diag << { "corr_id" => @current_corr_id, "message" => msg, "failed" => true }
+            Rails.logger.error msg
           end
 
           def tx_failed?
@@ -67,6 +68,7 @@ module Spree
 
           def add_warn(msg)
             @diag << { "corr_id" => @current_corr_id, "message" => msg }
+            Rails.logger.warn msg
           end
 
           # Run a block and make sure any errors in it get routed to the right place
