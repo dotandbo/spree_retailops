@@ -34,8 +34,10 @@ module Spree
 
           products = if params["products_json"]
             # Workaround for https://github.com/rails/rails/issues/8832
+            Rails.logger.info "RetailOps JSON 'products_json': #{params["products_json"]}"
             JSON.parse(params["products_json"])
           else
+            Rails.logger.info "RetailOps 'products': #{params["products"]}"
             params["products"]
           end
 
