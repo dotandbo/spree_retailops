@@ -138,11 +138,11 @@ module Spree
             shipment.state = 'ready'
             shipment.ship!
             shipment.save!
-            
+
             @order.shipments.reload
-            @order.shipments.each do |s| 
-                s.reload 
-                s.destroy! if s.manifest.empty? 
+            @order.shipments.each do |s|
+                s.reload
+                s.destroy! if s.manifest.empty?
             end
             @order.reload
             @order.update!
