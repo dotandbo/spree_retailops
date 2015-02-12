@@ -329,7 +329,7 @@ module Spree
             ret_obj = order.return_authorizations.detect { |r| r.number == ret_str }
 
             if ret_obj && ret_obj.received?
-              closed_value += BigDecimal.new(ret["refund_amt"],2)
+              closed_value += BigDecimal.new(ret["subtotal_amt"] || ret["refund_amt"],2)
               ret["items"].to_a.each do |it|
                 it_obj = order.line_items.detect { |i| i.id.to_s == it["channel_refnum"].to_s }
                 closed_items[it_obj] = (closed_items[it_obj] || 0) + it["quantity"].to_i if it_obj
@@ -376,8 +376,8 @@ module Spree
           end
 
           # set RMA amount
-          if rma["refund_amt"].present?
-            use_value = BigDecimal.new(rma["refund_amt"],2) - closed_value
+          if rma["subtotal_amt"].present? || rma["refund_amt"].present?
+            use_value = BigDecimal.new(rma["subtotal_amt"] || rma["refund_amt"],2) - closed_value
             if use_value != rma_obj.amount
               rma_obj.amount = use_value
               changed = true
@@ -387,6 +387,11 @@ module Spree
           rma_obj.save! if changed
           return true
         end
+
+        private
+          def options
+            params['options'] || {}
+          end
       end
     end
   end

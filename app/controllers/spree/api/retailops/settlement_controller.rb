@@ -255,11 +255,29 @@ module Spree
             # optionally check completeness here?
 
             # set value
-            return_obj.amount = BigDecimal.new(info['refund_amt'],2)
+            return_obj.amount = BigDecimal.new(info['subtotal_amt'] || info['refund_amt'],2)
             return_obj.save!
 
             # receive it
             return_obj.receive!
+
+            # refund_amt (the only field sent by previous versions of the RO driver) is the total amount to refund
+            # refund_amt = subtotal_amt + tax_amt + shipping_amt - [total restocking fees] + [rounding error]
+
+            # Possible issue: any restocking fee < 5 cents is likely actually rounding noise
+            # Possible issue: Setting "Refund" = No for an item will be treated the same as nulling the refund with a restocking fee
+
+            if info['subtotal_amt']
+              subtotal_amt = BigDecimal.new(info['subtotal_amt'],2)
+              refund_amt = BigDecimal.new(info['refund_amt'],2)
+              shipping_amt = BigDecimal.new(info['shipping_amt'],2)
+              tax_amt = BigDecimal.new(info['tax_amt'],2)
+              fee_amt = (subtotal_amt + shipping_amt + tax_amt) - refund_amt
+
+              @order.adjustments.create!(amount: -shipping_amt, label: "Return #{rop_return_id} Shipping") if shipping_amt.nonzero?
+              @order.adjustments.create!(amount: -tax_amt, label: "Return #{rop_return_id} Tax") if tax_amt.nonzero?
+              @order.adjustments.create!(amount: fee_amt, label: "Return #{rop_return_id} Restocking Fee") if fee_amt.nonzero?
+            end
           end
 
           def assert_refund_adjustments(refunds, cancel_ship)
