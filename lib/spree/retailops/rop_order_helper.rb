@@ -41,6 +41,58 @@ module Spree
         return changed
       end
 
+      # 2015-02-27: Transforming shipments to an advisory shipping method turns out to be a bad idea because that loses the information about what the original
+      # shipping method was, and we need that information in order to recalculate the shipping price for new/removed items in the new 'delegated' mode.  So
+      # instead, keep the existing shipment method, but set the adjustment to 0 and close it.
+      def apply_shipment_price(price)
+        changed = false
+        return false if @order.canceled?
+
+        @order.shipments.each do |shipment|
+          this_ship_price = 0
+
+          rate = shipment.selected_shipping_rate
+          unless shipment.selected_shipping_rate
+            # probably shouldn't happen
+            shipment.add_shipping_method(rop_tbd_method, true)
+            rate = shipment.selected_shipping_rate
+            changed = true
+          end
+
+          if shipment.respond_to?(:adjustment_total) && shipment.adjustment_total > 0
+            shipment.adjustments.delete_all
+          end
+
+          if rate.cost != this_ship_price
+            changed = true
+            rate.cost = this_ship_price
+
+            if shipment.respond_to?(:adjustment)
+              shipment.ensure_correct_adjustment
+
+              # Override and lock the shipment adjustment so that normal Spree rules won't apply to change it
+              adj = shipment.adjustment
+              adj.amount = this_ship_price
+              adj.close if adj.open?
+            end
+            # otherwise setting the shipping rate was enough.  Can't actually close a shipping rate but hopefully those won't be recalculated too often
+            shipment.save!
+          end
+        end
+
+        adj_price = price
+        order_ship_adj = @order.adjustments.where(label: 'Standard Shipping')
+        if adj_price > 0 && !order_ship_adj
+          @order.adjustments.create(amount: adj_price, label: "Standard Shipping", mandatory: false)
+          @order.save!
+          changed = true
+        elsif order_ship_adj && order_ship_adj.amount != adj_price
+          order_ship_price.amount = adj_price
+          @order.save!
+          changed = true
+        end
+      end
+
       def rop_tbd_method
         advisory_method(options["partial_ship_name"] || "Unshipped")
       end
