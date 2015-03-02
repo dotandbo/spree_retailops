@@ -48,8 +48,18 @@ module Spree
         changed = false
         return false if @order.canceled?
 
+        target_ship = nil
+
+        if Spree::Config[:retailops_express_shipping_price] != "adjustment"
+          target_ship = @order.shipments.unshipped.first || @order.shipments.first
+        end
+
         @order.shipments.each do |shipment|
           this_ship_price = 0
+          if shipment == target_ship
+            this_ship_price = price
+            price = 0 # do not need adjustment
+          end
 
           rate = shipment.selected_shipping_rate
           unless shipment.selected_shipping_rate
@@ -80,14 +90,13 @@ module Spree
           end
         end
 
-        adj_price = price
         order_ship_adj = @order.adjustments.where(label: 'Standard Shipping')
-        if adj_price > 0 && !order_ship_adj
-          @order.adjustments.create(amount: adj_price, label: "Standard Shipping", mandatory: false)
+        if price > 0 && !order_ship_adj
+          @order.adjustments.create(amount: price, label: "Standard Shipping", mandatory: false)
           @order.save!
           changed = true
-        elsif order_ship_adj && order_ship_adj.amount != adj_price
-          order_ship_price.amount = adj_price
+        elsif order_ship_adj && order_ship_adj.amount != price
+          order_ship_price.amount = price
           @order.save!
           changed = true
         end
