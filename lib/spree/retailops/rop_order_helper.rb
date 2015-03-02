@@ -3,9 +3,17 @@ module Spree
     class RopOrderHelper
       attr_accessor :order, :options
 
-      # To prevent Spree from trying to recalculate shipment costs as we
-      # create and delete shipments, transfer shipping costs to order
-      # adjustments
+      def standard_shipping_label
+        'Standard Shipping'
+      end
+
+      # There is a major impedence mismatch between Spree and RetailOps on the subject of ship pricing.  Spree assigns a ship price (which confusingly is called
+      # a "shipment cost") to each shipment/package, while RetailOps supports shipping lines at the order and ordered-item level.
+      #
+      # When an order is being actively managed by the RetailOps integration, we want a consistent price between systems, so when an order is managed we combine
+      # all of the shipment prices into a single price which is used on the RetailOps side and also stashed on the order, either as a global adjustment
+      # (matching historical spree_retailops behavior, and arguably more correct for multi-shipment orders) or as the price on one of the shipments (arguably
+      # more correct for single-shipment orders).
       def separate_shipment_costs
         changed = false
         return false if @order.canceled?
@@ -19,26 +27,13 @@ module Spree
             shipment.cost + shipment.adjustment_total
           end
 
-          if cost > 0
-            extracted_total += cost
-            shipment.adjustment.open if shipment.respond_to? :adjustment
-            shipment.adjustments.delete_all if shipment.respond_to? :adjustments
-            shipment.shipping_rates.delete_all
-            shipment.cost = 0
-            shipment.add_shipping_method(rop_tbd_method, true)
-            shipment.save!
-            changed = true
-          end
+          extracted_total += cost if cost > 0
         end
 
-        if extracted_total > 0
-          # TODO: is Standard Shipping the best name for this?  Should i18n happen?
-          @order.adjustments.create(amount: extracted_total, label: "Standard Shipping", mandatory: false)
-          @order.save!
-          changed = true
-        end
+        order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
+        extracted_total += order_ship_adj.amount if order_ship_adj
 
-        return changed
+        return apply_shipment_price(extracted_total)
       end
 
       # 2015-02-27: Transforming shipments to an advisory shipping method turns out to be a bad idea because that loses the information about what the original
@@ -90,9 +85,9 @@ module Spree
           end
         end
 
-        order_ship_adj = @order.adjustments.where(label: 'Standard Shipping')
+        order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
         if price > 0 && !order_ship_adj
-          @order.adjustments.create(amount: price, label: "Standard Shipping", mandatory: false)
+          @order.adjustments.create(amount: price, label: standard_shipping_label, mandatory: false)
           @order.save!
           changed = true
         elsif order_ship_adj && order_ship_adj.amount != price
