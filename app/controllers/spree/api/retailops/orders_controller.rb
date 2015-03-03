@@ -118,6 +118,7 @@ module Spree
             # We make our data match that as well as possible, and then send the list back annotated with channel_refnums and quantities/costs/etc
 
             used_v = {}
+            order.all_adjustments.tax.each { |a| a.open if a.closed? } # Allow tax to organically recalculate
 
             params["line_items"].to_a.each do |lirec|
               corr = lirec["corr"].to_s
@@ -205,6 +206,7 @@ module Spree
               result << { corr: corr, refnum: li.id, quantity: li.quantity }
             end
             items_changed = changed
+            order.all_adjustments.tax.each { |a| a.close if a.open? } # Allow tax to organically recalculate
 
             # omitted RMAs are treated as 'no action'
             params["rmas"].to_a.each do |rma|
