@@ -15,8 +15,11 @@ module Spree
       # (matching historical spree_retailops behavior, and arguably more correct for multi-shipment orders) or as the price on one of the shipments (arguably
       # more correct for single-shipment orders).
       def separate_shipment_costs
-        changed = false
         return false if @order.canceled?
+        return apply_shipment_price(effective_shipping_price)
+      end
+
+      def effective_shipping_price
         extracted_total = 0.to_d
         @order.shipments.each do |shipment|
           # Spree 2.1.x: shipment costs are expressed as order adjustments linked through source to the shipment
@@ -33,7 +36,7 @@ module Spree
         order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
         extracted_total += order_ship_adj.amount if order_ship_adj
 
-        return apply_shipment_price(extracted_total)
+        return extracted_total
       end
 
       # 2015-02-27: Transforming shipments to an advisory shipping method turns out to be a bad idea because that loses the information about what the original
@@ -95,6 +98,28 @@ module Spree
           @order.save!
           changed = true
         end
+      end
+
+      # Create a single package virtually containing all of the items of this order to recalculate a shipping price using the order's rules.  Note that this
+      # bypasses the usual checks for availability and zone that usually happen prior to an invocation of a shipping calculator; hopefully this will not cause
+      # problems.  It does not account for shipping tax and is probably unsuitable for use with "active shipping" type solutions.
+      def calculate_ship_price
+        contents = []
+        stock_location = nil
+        method = nil
+
+        @order.shipments.order(:id).each do |ship|
+          pkg = ship.to_package
+          meth = ship.shipping_method
+          if meth && !meth.calculator.is_a?(Spree::Calculator::Shipping::RetailopsAdvisory)
+            # this is a legit shipping method that can be used for recalculation
+            method ||= meth
+            stock_location ||= pkg.stock_location
+          end
+          contents += pkg.contents
+        end
+
+        return method && method.calculator.compute(Spree::Stock::Package.new( stock_location, @order, contents ))
       end
 
       def rop_tbd_method

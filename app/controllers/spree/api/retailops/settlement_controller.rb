@@ -31,10 +31,11 @@ module Spree
         def add_packages
           ActiveRecord::Base.transaction do
             find_order
-            @order_helper.separate_shipment_costs
+            ship_price = @order_helper.effective_shipping_price
             params["packages"].to_a.each do |pkg|
               extract_items_into_package pkg
             end
+            @order_helper.apply_shipment_price(ship_price)
           end
           render text: {}.to_json
         end
@@ -53,9 +54,9 @@ module Spree
         def mark_complete
           ActiveRecord::Base.transaction do
             find_order
-            @order_helper.separate_shipment_costs
+            ship_price = @order_helper.effective_shipping_price
             assert_refund_adjustments params['refund_items'], true
-            @order.update!
+            @order_helper.apply_shipment_price(ship_price)
           end
           settle_payments_if_desired
           render text: @settlement_results.to_json
