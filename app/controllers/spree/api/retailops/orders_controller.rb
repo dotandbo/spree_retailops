@@ -77,7 +77,6 @@ module Spree
         def index
           authorize! :read, [Order, LineItem, Variant, Payment, PaymentMethod, CreditCard, Shipment, Adjustment]
 
-          options = params['options'] || {}
           query = options['filter'] || {}
           query['completed_at_not_null'] ||= 1
           query['retailops_import_eq'] ||= 'yes'
@@ -110,6 +109,9 @@ module Spree
           changed = false
           result = []
           order = Order.find_by!(number: params["order_refnum"].to_s)
+          @helper = Spree::Retailops::RopOrderHelper.new
+          @helper.order = order
+          @helper.options = options
           ActiveRecord::Base.transaction do
 
             # RetailOps will be sending in an authoritative (potentially updated) list of line items
@@ -202,24 +204,24 @@ module Spree
 
               result << { corr: corr, refnum: li.id, quantity: li.quantity }
             end
+            items_changed = changed
 
             # omitted RMAs are treated as 'no action'
             params["rmas"].to_a.each do |rma|
               changed = true if sync_rma order, rma
             end
 
-            if params["shipping_amt"]
-              if order.respond_to?(:retailops_set_shipping_amt)
+            if options["ro_authoritative_ship"]
+              if params["shipping_amt"]
                 total = BigDecimal.new(params["shipping_amt"])
                 item_level = BigDecimal.new(0) + params['line_items'].to_a.collect{ |l| BigDecimal.new(l['direct_ship_amt']) }.sum
-
-                changed = true if order.retailops_set_shipping_amt(
-                  total_shipping_amt: total,
-                  order_shipping_amt: total - item_level
-                )
-              else
-                changed = true if sync_shipping_amt order, BigDecimal.new(params["shipping_amt"])
+                changed = true if @helper.apply_shipment_price(total, total - item_level)
               end
+            elsif items_changed
+              calc_ship = @helper.calculate_ship_price
+              # recalculate and apply ship price if we still have enough information to do so
+              # calc_ship may be nil otherwise
+              @helper.apply_shipment_price(calc_ship) if calc_ship
             end
 
             # get tax/discount totals from RetailOps and create adjustments for any discrepancy
@@ -276,29 +278,6 @@ module Spree
             changed = true
             adj ||= order.adjustments.create(amount: rop_amt - apparent_amt, label: label, mandatory: false)
             adj.amount = rop_amt - apparent_amt
-            adj.save!
-          end
-
-          return changed
-        end
-
-        def sync_shipping_amt(order, amt)
-          changed = false
-
-          helper = Spree::Retailops::RopOrderHelper.new
-          helper.order = order
-          helper.options = params["options"]
-          changed = true if helper.separate_shipment_costs
-
-          # All Spree shipment charges have been transmogrified to a "Standard Shipping" adjustment.  Need a non-label-based way to identify these
-
-          adj = order.adjustments.detect { |a| a.label == 'Standard Shipping' } #XXX
-          adj_amt = adj ? adj.amount : 0
-
-          if adj_amt != amt
-            changed = true
-            adj ||= order.adjustments.create(amount: amt, label: "Standard Shipping", mandatory: false)
-            adj.amount = amt
             adj.save!
           end
 

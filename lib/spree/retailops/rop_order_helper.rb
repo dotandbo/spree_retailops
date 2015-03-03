@@ -42,9 +42,15 @@ module Spree
       # 2015-02-27: Transforming shipments to an advisory shipping method turns out to be a bad idea because that loses the information about what the original
       # shipping method was, and we need that information in order to recalculate the shipping price for new/removed items in the new 'delegated' mode.  So
       # instead, keep the existing shipment method, but set the adjustment to 0 and close it.
-      def apply_shipment_price(price)
+      #
+      # When doing writebacks in RO-authoritative mode, price is the total RO shipping price while order_level is the part not attached to any line.
+      def apply_shipment_price(price, order_level?)
         changed = false
         return false if @order.canceled?
+
+        if @order.respond_to?(:retailops_set_shipping_amt)
+          return @order.retailops_set_shipping_amt( total_shipping_amt: price, order_shipping_amt: order_level )
+        end
 
         target_ship = nil
 
