@@ -172,7 +172,7 @@ module Spree
               end
 
               if lirec["estimated_unit_cost"]
-                cost = BigDecimal.new(lirec["estimated_unit_cost"].to_f)
+                cost = lirec["estimated_unit_cost"].to_d
                 if cost > 0 and li.cost_price != cost
                   changed = true
                   li.update!(cost_price: cost)
@@ -180,7 +180,7 @@ module Spree
               end
 
               if lirec["unit_price"]
-                price = BigDecimal.new(lirec["unit_price"])
+                price = lirec["unit_price"].to_d
                 if li.price != price
                   li.update!(price: price)
                   changed = true
@@ -198,8 +198,8 @@ module Spree
 
               if li.respond_to?(:retailops_extension_writeback)
                 # well-known extensions - known to ROP but not Spree
-                extra["direct_ship_amt"] = BigDecimal.new(lirec["direct_ship_amt"]) if lirec["direct_ship_amt"]
-                extra["apportioned_ship_amt"] = BigDecimal.new(lirec["apportioned_ship_amt"]) if lirec["apportioned_ship_amt"]
+                extra["direct_ship_amt"] = lirec["direct_ship_amt"].to_d.round(4) if lirec["direct_ship_amt"]
+                extra["apportioned_ship_amt"] = lirec["apportioned_ship_amt"].to_d.round(4) if lirec["apportioned_ship_amt"]
                 changed = true if li.retailops_extension_writeback(extra)
               end
 
@@ -213,10 +213,11 @@ module Spree
               changed = true if sync_rma order, rma
             end
 
+            ro_amts = params['order_amts'] || {}
             if options["ro_authoritative_ship"]
-              if params["shipping_amt"]
-                total = BigDecimal.new(params["shipping_amt"])
-                item_level = BigDecimal.new(0) + params['line_items'].to_a.collect{ |l| BigDecimal.new(l['direct_ship_amt']) }.sum
+              if ro_amts["shipping_amt"]
+                total = ro_amts["shipping_amt"].to_d
+                item_level = 0.to_d + params['line_items'].to_a.collect{ |l| l['direct_ship_amt'].to_d }.sum
                 changed = true if @helper.apply_shipment_price(total, total - item_level)
               end
             elsif items_changed
@@ -231,12 +232,12 @@ module Spree
             order.update! if changed
 
             if params["discount_amt"]
-              discount_amt = BigDecimal.new(params["discount_amt"])
+              discount_amt = params["discount_amt"].to_d
               changed = true if order.respond_to?(:retailops_set_order_discount_amount) ? order.retailops_set_order_discount_amount(discount_amt) : set_order_discount(order, discount_amt)
             end
 
             if params["tax_amt"]
-              tax_amt = BigDecimal.new(params["tax_amt"])
+              tax_amt = params["tax_amt"].to_d
               changed = true if order.respond_to?(:retailops_set_order_tax) ? order.retailops_set_order_tax(tax_amt) : set_order_tax(order, tax_amt)
             end
 
@@ -302,7 +303,7 @@ module Spree
           # for each ROP return: check if it exists in Spree.  Reduce RMA amount for returns that
           # have been filed.
 
-          closed_value = BigDecimal.new(0)
+          closed_value = 0.to_d
           closed_items = {}
 
           rma["returns"].to_a.each do |ret|
@@ -310,7 +311,7 @@ module Spree
             ret_obj = order.return_authorizations.detect { |r| r.number == ret_str }
 
             if ret_obj && ret_obj.received?
-              closed_value += BigDecimal.new(ret['refund_amt']) - (ret['tax_amt'] ? (BigDecimal.new(ret['tax_amt']) + BigDecimal.new(ret['shipping_amt'])) : 0)
+              closed_value += ret['refund_amt'].to_d - (ret['tax_amt'] ? (ret['tax_amt'].to_d + ret['shipping_amt'].to_d) : 0)
               ret["items"].to_a.each do |it|
                 it_obj = order.line_items.detect { |i| i.id.to_s == it["channel_refnum"].to_s }
                 closed_items[it_obj] = (closed_items[it_obj] || 0) + it["quantity"].to_i if it_obj
@@ -358,7 +359,7 @@ module Spree
 
           # set RMA amount
           if rma["subtotal_amt"].present? || rma["refund_amt"].present?
-            use_value = BigDecimal.new(rma['refund_amt']) - (rma['tax_amt'] ? (BigDecimal.new(rma['tax_amt']) + BigDecimal.new(rma['shipping_amt'])) : 0) - closed_value
+            use_value = rma['refund_amt'].to_d - (rma['tax_amt'] ? (rma['tax_amt'].to_d + rma['shipping_amt'].to_d) : 0) - closed_value
             if use_value != rma_obj.amount
               rma_obj.amount = use_value
               changed = true
