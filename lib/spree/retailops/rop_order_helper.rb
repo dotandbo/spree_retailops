@@ -36,6 +36,7 @@ module Spree
         order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
         extracted_total += order_ship_adj.amount if order_ship_adj
 
+
         return extracted_total
       end
 
@@ -44,7 +45,7 @@ module Spree
       # instead, keep the existing shipment method, but set the adjustment to 0 and close it.
       #
       # When doing writebacks in RO-authoritative mode, price is the total RO shipping price while order_level is the part not attached to any line.
-      def apply_shipment_price(price, order_level?)
+      def apply_shipment_price(price, order_level = nil)
         changed = false
         return false if @order.canceled?
 
@@ -55,7 +56,7 @@ module Spree
         target_ship = nil
 
         if Spree::Config[:retailops_express_shipping_price] != "adjustment"
-          target_ship = @order.shipments.unshipped.first || @order.shipments.first
+          target_ship = @order.shipments.to_a.reject(&:shipped?).first || @order.shipments.first
         end
 
         @order.shipments.each do |shipment|
@@ -70,6 +71,7 @@ module Spree
             # probably shouldn't happen
             shipment.add_shipping_method(rop_tbd_method, true)
             rate = shipment.selected_shipping_rate
+            shipment.save! # ensure that the adjustment is created
             changed = true
           end
 
@@ -77,30 +79,34 @@ module Spree
             shipment.adjustments.delete_all
           end
 
-          if rate.cost != this_ship_price
+          if shipment.cost != this_ship_price
             changed = true
             rate.cost = this_ship_price
+            rate.save!
 
             if shipment.respond_to?(:adjustment)
-              shipment.ensure_correct_adjustment
+              #shipment.ensure_correct_adjustment # adjustment ought to exist by now...
 
               # Override and lock the shipment adjustment so that normal Spree rules won't apply to change it
               adj = shipment.adjustment
               adj.amount = this_ship_price
               adj.close if adj.open?
+              adj.save!
             end
             # otherwise setting the shipping rate was enough.  Can't actually close a shipping rate but hopefully those won't be recalculated too often
+            shipment.cost = this_ship_price
             shipment.save!
           end
         end
 
         order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
         if price > 0 && !order_ship_adj
-          @order.adjustments.create(amount: price, label: standard_shipping_label, mandatory: false)
+          @order.adjustments.create!(amount: price, label: standard_shipping_label, mandatory: false)
           @order.save!
           changed = true
         elsif order_ship_adj && order_ship_adj.amount != price
-          order_ship_price.amount = price
+          order_ship_adj.amount = price
+          order_ship_adj.save!
           @order.save!
           changed = true
         end
@@ -124,6 +130,7 @@ module Spree
           end
           contents += pkg.contents
         end
+
 
         return method && method.calculator.compute(Spree::Stock::Package.new( stock_location, @order, contents ))
       end
