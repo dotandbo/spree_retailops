@@ -104,6 +104,8 @@ module Spree
           render text: {}.to_json
         end
 
+        # This probably calls update! far more times than it needs to as a result of line item hooks, etc
+        # Exercise for interested parties: fix that
         def synchronize
           authorize! :update, Order
           changed = false
@@ -118,7 +120,6 @@ module Spree
             # We make our data match that as well as possible, and then send the list back annotated with channel_refnums and quantities/costs/etc
 
             used_v = {}
-            order.all_adjustments.tax.each { |a| a.open if a.closed? } # Allow tax to organically recalculate
 
             params["line_items"].to_a.each do |lirec|
               corr = lirec["corr"].to_s
@@ -227,19 +228,20 @@ module Spree
               @helper.apply_shipment_price(calc_ship) if calc_ship
             end
 
-            # get tax/discount totals from RetailOps and create adjustments for any discrepancy
-            # discount done first because it makes assumptions about nonstaleness
-            order.update! if changed
+            if changed
+              # Allow tax to organically recalculate
+              # *slightly* against the spirit of adjustments to automatically reopen them, but this is triggered on item changes which are (generally) human-initiated in RO
+              if items_changed
+                order.all_adjustments.tax.each { |a| a.open if a.closed? }
+                order.adjustments.promotion.each { |a| a.open if a.closed? }
+              end
 
-            if params["discount_amt"]
-              discount_amt = params["discount_amt"].to_d
-              changed = true if order.respond_to?(:retailops_set_order_discount_amount) ? order.retailops_set_order_discount_amount(discount_amt) : set_order_discount(order, discount_amt)
+              order.update!
+
+              order.all_adjustments.tax.each { |a| a.close if a.open? }
+              order.adjustments.promotion.each { |a| a.close if a.open? }
             end
 
-            if params["tax_amt"]
-              tax_amt = params["tax_amt"].to_d
-              changed = true if order.respond_to?(:retailops_set_order_tax) ? order.retailops_set_order_tax(tax_amt) : set_order_tax(order, tax_amt)
-            end
 
             if order.respond_to?(:retailops_after_writeback)
               order.retailops_after_writeback(params)
@@ -253,38 +255,6 @@ module Spree
             dump: Extractor.walk_order_obj(order),
             result: result,
           }.to_json
-        end
-
-        def set_order_tax(order, tax_amt)
-          apparent_tax_amt = order.respond_to?(:additional_tax_total) ? order.additional_tax_total : order.tax_total
-          set_discrepancy_adjustment(order, 'Tax set in RetailOps', tax_amt, apparent_tax_amt, false)
-        end
-
-        def set_order_discount(order, discount_amt)
-          apparent_discount_amt = order.try(:discount_total) || order.adjustment_total
-          # Fudge: ROP tax adjustments are interpreted by Spree as discounts
-          order.adjustments.each do |a|
-            if a.label == 'Tax set in RetailOps' || a.label == 'Standard Shipping'
-              apparent_discount_amt -= a.amount
-            end
-          end
-          set_discrepancy_adjustment(order, 'Discount set in RetailOps', -discount_amt, apparent_discount_amt, true)
-        end
-
-        def set_discrepancy_adjustment(order, label, rop_amt, apparent_amt, adj_included_in_apparent)
-          adj = order.adjustments.detect { |a| a.label == label }
-          adj_amt = adj ? adj.amount : 0
-          apparent_amt -= adj_amt if adj_included_in_apparent
-          changed = false
-
-          if rop_amt != apparent_amt
-            changed = true
-            adj ||= order.adjustments.create(amount: rop_amt - apparent_amt, label: label, mandatory: false)
-            adj.amount = rop_amt - apparent_amt
-            adj.save!
-          end
-
-          return changed
         end
 
         def sync_rma(order, rma)
