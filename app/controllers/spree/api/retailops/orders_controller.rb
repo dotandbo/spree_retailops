@@ -130,14 +130,14 @@ module Spree
 
               variant = Spree::Variant.find_by(sku: sku)
               next unless variant
-              next if qty <= 0
+              next if qty < 0
               next if used_v[variant]
               used_v[variant] = true
 
               li = order.find_line_item_by_variant(variant)
               oldqty = li ? li.quantity : 0
 
-              if lirec["removed"]
+              if lirec["removed"] || qty==0
                 if li
                   order.contents.remove(li.variant, li.quantity)
                   changed = true
