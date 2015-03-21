@@ -68,7 +68,7 @@ module Spree
 
           rate = shipment.selected_shipping_rate
           unless shipment.selected_shipping_rate
-            # probably shouldn't happen
+            # probably shouldn't happen, but it does
             shipment.add_shipping_method(rop_tbd_method, true)
             rate = shipment.selected_shipping_rate
             shipment.save! # ensure that the adjustment is created
@@ -104,6 +104,10 @@ module Spree
           @order.adjustments.create!(amount: price, label: standard_shipping_label, mandatory: false)
           @order.save!
           changed = true
+        elsif order_ship_adj && price == 0
+          order_ship_adj.destroy
+          @order.save!
+          changed=true
         elsif order_ship_adj && order_ship_adj.amount != price
           order_ship_adj.amount = price
           order_ship_adj.save!
