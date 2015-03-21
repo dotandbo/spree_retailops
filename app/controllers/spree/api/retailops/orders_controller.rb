@@ -175,7 +175,6 @@ module Spree
               if lirec["estimated_unit_cost"]
                 cost = lirec["estimated_unit_cost"].to_d
                 if cost > 0 and li.cost_price != cost
-                  changed = true
                   li.update!(cost_price: cost)
                 end
               end
@@ -189,12 +188,11 @@ module Spree
               end
 
               if li.respond_to?(:estimated_ship_date=) && li.estimated_ship_date != eshp
-                changed = true
                 li.update!(estimated_ship_date: eshp)
               end
 
               if li.respond_to?(:retailops_set_estimated_ship_date)
-                changed = true if li.retailops_set_estimated_ship_date(eshp)
+                li.retailops_set_estimated_ship_date(eshp)
               end
 
               if li.respond_to?(:retailops_extension_writeback)
@@ -207,7 +205,6 @@ module Spree
               result << { corr: corr, refnum: li.id, quantity: li.quantity }
             end
             items_changed = changed
-            order.all_adjustments.tax.each { |a| a.close if a.open? } # Allow tax to organically recalculate
 
             # omitted RMAs are treated as 'no action'
             params["rmas"].to_a.each do |rma|
@@ -233,13 +230,17 @@ module Spree
               # *slightly* against the spirit of adjustments to automatically reopen them, but this is triggered on item changes which are (generally) human-initiated in RO
               if items_changed
                 order.all_adjustments.tax.each { |a| a.open if a.closed? }
-                order.adjustments.promotion.each { |a| a.open if a.closed? }
+                
+                # # Not safe to simply re-open promotion adjustments here here. 
+                # # For instance it could cause expired coupons to be unapplied
+                # # However we do need a solution to the problem of discount recalculation. 
+                # # For instance 10% off coupon should be re-calculated against the new subtotal. 
+                # order.adjustments.promotion.each { |a| a.open if a.closed? }
               end
 
               order.update!
 
               order.all_adjustments.tax.each { |a| a.close if a.open? }
-              order.adjustments.promotion.each { |a| a.close if a.open? }
             end
 
 
