@@ -229,7 +229,7 @@ module Spree
               # Allow tax to organically recalculate
               # *slightly* against the spirit of adjustments to automatically reopen them, but this is triggered on item changes which are (generally) human-initiated in RO
               if items_changed
-                order.all_adjustments.tax.each { |a| a.open if a.closed? }
+                order.all_adjustments.tax.each { |a| a.open if a.closed? && a.amount>0}
                 
                 # # Not safe to simply re-open promotion adjustments here here. 
                 # # For instance it could cause expired coupons to be unapplied
