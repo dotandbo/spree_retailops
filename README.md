@@ -48,4 +48,6 @@ I'm a hard-liner about namespace pollution, so all global names created or inter
 
 * `Spree::LineItem#retailops_extension_writeback(hash)`: Define this to accept per-line-item data which is not handled by stock Spree.  Two hash keys are currently defined, `direct_ship_amt` which is a BigDecimal shipping amount for the specific line item (not including order-wide shipping charges), and `apportioned_ship_amt` which is that line item's share of the order shipping (as would be used for refunds).
 
+* `Spree::LineItem#retailops_expected_ship_date`: Define this to automatically populate the RetailOps "expected ship date" field on order line items, allowing for customer expectation-based routing decisions.
+
 Copyright (c) 2014 Gud Technologies, Inc, released under the New BSD License
