@@ -114,6 +114,7 @@ module Spree
           @order.save!
           changed = true
         end
+        @order.update!
       end
 
       # Create a single package virtually containing all of the items of this order to recalculate a shipping price using the order's rules.  Note that this
