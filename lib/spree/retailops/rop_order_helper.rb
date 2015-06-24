@@ -120,7 +120,7 @@ module Spree
       # Create a single package virtually containing all of the items of this order to recalculate a shipping price using the order's rules.  Note that this
       # bypasses the usual checks for availability and zone that usually happen prior to an invocation of a shipping calculator; hopefully this will not cause
       # problems.  It does not account for shipping tax and is probably unsuitable for use with "active shipping" type solutions.
-      def calculate_ship_price
+      def calculate_ship_price(removed = false)
         contents = []
         stock_location = nil
         method = nil
@@ -136,6 +136,14 @@ module Spree
           contents += pkg.contents
         end
 
+        # If the shipment that was just deleted was the last unshipped shipment
+        # Recalculate the ship cost using standard shipping method
+        # This resolves https://github.com/dotandbo/dotandbo-spree/issues/3857
+        # Where entire shipping fee is removed from order if 
+        # last unshipped line_item is canceled.
+        if removed && !method && @order.shipments.present? && !@order.shipments.unshipped.present?
+          method = Spree::ShippingMethod.first
+        end
 
         return method && method.calculator.compute(Spree::Stock::Package.new( stock_location, @order, contents ))
       end

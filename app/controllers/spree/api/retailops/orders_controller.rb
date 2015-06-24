@@ -110,6 +110,7 @@ module Spree
         def synchronize
           authorize! :update, Order
           changed = false
+          removed = false
           result = []
           order = Order.find_by!(number: params["order_refnum"].to_s)
           @helper = Spree::Retailops::RopOrderHelper.new
@@ -142,6 +143,7 @@ module Spree
                 if li
                   order.contents.remove(li.variant, li.quantity)
                   changed = true
+                  removed = true
                 end
                 next
               end
@@ -220,7 +222,7 @@ module Spree
                 changed = true if @helper.apply_shipment_price(total, total - item_level)
               end
             elsif items_changed
-              calc_ship = @helper.calculate_ship_price
+              calc_ship = @helper.calculate_ship_price(removed)
               # recalculate and apply ship price if we still have enough information to do so
               # calc_ship may be nil otherwise
               @helper.apply_shipment_price(calc_ship) if calc_ship
