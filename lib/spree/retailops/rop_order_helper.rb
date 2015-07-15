@@ -66,6 +66,21 @@ module Spree
             price = 0 # do not need adjustment
           end
 
+          if @order.completed_at.present? && @order.completed_at <= Time.local(2015, 7, 14, 22, 20).in_time_zone("Pacific Time (US & Canada)")
+            deprecated_shipping_method_id = Spree::ShippingMethod.find_by_name('Deprecated Standard Shipping').try(:id) || 1
+            deprecated_rate = begin
+              shipment.shipping_rates.find_or_create_by({
+                shipping_method_id: deprecated_shipping_method_id,
+                cost: Spree::Calculator::Shipping::DeprecatedTieredRate.compute_shipping(@order.line_items_total_without_gift_cards, @order)
+              })
+            rescue
+              shipment.shipping_rates.find_by({
+                shipping_method_id: deprecated_shipping_method_id
+              })
+            end
+            shipment.shipping_rates.update_all(selected: false)
+            deprecated_rate.update_attributes(selected: true)
+          end
           rate = shipment.selected_shipping_rate
           unless shipment.selected_shipping_rate
             # probably shouldn't happen, but it does

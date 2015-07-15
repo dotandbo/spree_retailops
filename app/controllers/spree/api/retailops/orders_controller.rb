@@ -166,6 +166,7 @@ module Spree
                   shipment = order.shipments.build
                   shipment.state = 'ready'
                   shipment.stock_location_id = variant.stock_location_ids[0]
+                  shipment.refresh_rates
                   shipment.save!
                 end
 
