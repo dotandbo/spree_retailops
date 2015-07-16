@@ -142,7 +142,10 @@ module Spree
         # Where entire shipping fee is removed from order if 
         # last unshipped line_item is canceled.
         if removed && !method && @order.shipments.present? && !@order.shipments.unshipped.present?
-          method = Spree::ShippingMethod.first
+          method = @order.completed_at < '2015-07-14 15:20 PDT'.to_time ? 
+          Spree::ShippingMethod.first : Spree::ShippingMethod.find_by_name("Standard Shipping")
+
+          Rails.logger.error "Shipping method changed to #{method.name} on #{@order.number}"
         end
 
         return method && method.calculator.compute(Spree::Stock::Package.new( stock_location, @order, contents ))
