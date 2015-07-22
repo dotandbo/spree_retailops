@@ -69,6 +69,7 @@ module Spree
           rate = shipment.selected_shipping_rate
           unless shipment.selected_shipping_rate
             # probably shouldn't happen, but it does
+            Rails.logger.error "RO #{@order.number}, shipment #{shipment.id} rate selected id #{rate.id}"
             shipment.add_shipping_method(rop_tbd_method, true)
             rate = shipment.selected_shipping_rate
             shipment.save! # ensure that the adjustment is created
@@ -82,6 +83,7 @@ module Spree
           if shipment.cost != this_ship_price
             changed = true
             rate.cost = this_ship_price
+            Rails.logger.error "RO #{@order.number}, rate #{rate.id} cost set to this_ship_price: #{this_ship_price}"
             rate.save!
 
             if shipment.respond_to?(:adjustment)
@@ -95,6 +97,7 @@ module Spree
             end
             # otherwise setting the shipping rate was enough.  Can't actually close a shipping rate but hopefully those won't be recalculated too often
             shipment.cost = this_ship_price
+            Rails.logger.error "RO #{@order.number}, #{shipment.id} cost set to this_ship_price: #{this_ship_price}"
             shipment.save!
           end
         end
