@@ -36,6 +36,8 @@ module Spree
         order_ship_adj = @order.adjustments.where(label: standard_shipping_label).first
         extracted_total += order_ship_adj.amount if order_ship_adj
 
+        white_glove_ship_adj = @order.line_items.map{|l| l.send(:white_glove_adjustment).try(:amount).to_f}.sum
+        extracted_total += white_glove_ship_adj
 
         return extracted_total
       end
