@@ -191,12 +191,10 @@ module Spree
                 end
               end
 
-              if li.respond_to?(:estimated_ship_date=) && li.estimated_ship_date != eshp
-                li.update!(estimated_ship_date: eshp)
-              end
-
               if li.respond_to?(:retailops_set_estimated_ship_date)
                 li.retailops_set_estimated_ship_date(eshp)
+              elsif li.respond_to?(:estimated_ship_date=) && li.estimated_ship_date != eshp
+                li.update!(estimated_ship_date: eshp)
               end
 
               if li.respond_to?(:retailops_extension_writeback)
