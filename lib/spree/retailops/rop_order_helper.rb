@@ -141,7 +141,7 @@ module Spree
         # This resolves https://github.com/dotandbo/dotandbo-spree/issues/3857
         # Where entire shipping fee is removed from order if 
         # last unshipped line_item is canceled.
-        if removed && !method && @order.shipments.present? && !@order.shipments.unshipped.present?
+        if removed && !method && @order.shipments.present? && @order.shipments.where('state != ?','shipped').empty?
           method = @order.completed_at < '2015-07-14 15:20 PDT'.to_time ? 
           Spree::ShippingMethod.first : Spree::ShippingMethod.find_by_name("Standard Shipping")
 
