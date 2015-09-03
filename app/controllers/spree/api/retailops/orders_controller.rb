@@ -228,17 +228,21 @@ module Spree
             end
 
             if changed
+              # Allowing tax to organically recalcuate here is no longer needed.
+              # This logic has moved to spree's order_content_decorator.rb
+              # because we no longer use spree calculator to compute tax but instead depend on Avalara
+              
               # Allow tax to organically recalculate
               # *slightly* against the spirit of adjustments to automatically reopen them, but this is triggered on item changes which are (generally) human-initiated in RO
-              if items_changed
-                order.all_adjustments.tax.each { |a| a.open if a.closed? }
+              #if items_changed
+                #order.all_adjustments.tax.each { |a| a.open if a.closed? }
                 
                 # # Not safe to simply re-open promotion adjustments here here. 
                 # # For instance it could cause expired coupons to be unapplied
                 # # However we do need a solution to the problem of discount recalculation. 
                 # # For instance 10% off coupon should be re-calculated against the new subtotal. 
                 # order.adjustments.promotion.each { |a| a.open if a.closed? }
-              end
+              #end
 
               order.update!
 
