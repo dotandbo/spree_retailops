@@ -27,7 +27,7 @@ module Spree
           cost = if shipment.respond_to?(:adjustment)
             shipment.adjustment.try(:amount) || 0.to_d
           else
-            shipment.cost + shipment.adjustment_total
+            shipment.cost #+ shipment.adjustment_total *Do not include shipping tax as shipping cost
           end
 
           extracted_total += cost if cost > 0
@@ -75,8 +75,9 @@ module Spree
             changed = true
           end
 
+          # Do not delete shipping tax adjustments
           if shipment.respond_to?(:adjustment_total) && shipment.adjustment_total > 0
-            shipment.adjustments.delete_all
+            shipment.adjustments.where("source_type != 'Spree::AvalaraTransaction'").delete_all
           end
 
           if shipment.cost != this_ship_price
