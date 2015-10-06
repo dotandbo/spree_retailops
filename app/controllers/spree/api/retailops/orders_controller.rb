@@ -143,6 +143,7 @@ module Spree
               if lirec["removed"] || qty==0
                 if li
                   order.contents.remove(li.variant, li.quantity)
+                  order.refund_balance(full_cancellation: false)
                   changed = true
                   removed = true
                 end
@@ -174,6 +175,7 @@ module Spree
               elsif qty < oldqty
                 changed = true
                 li = order.contents.remove(variant, oldqty - qty)
+                order.refund_balance(full_cancellation: false)
               end
 
               if lirec["estimated_unit_cost"]
