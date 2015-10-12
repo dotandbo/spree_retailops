@@ -76,9 +76,9 @@ module Spree
           end
 
           # Do not delete shipping tax adjustments
-          if shipment.respond_to?(:adjustment_total) && shipment.adjustment_total > 0
-            shipment.adjustments.where("source_type != 'Spree::AvalaraTransaction'").delete_all
-          end
+          # if shipment.respond_to?(:adjustment_total) && shipment.adjustment_total > 0
+          #   shipment.adjustments.where("source_type != 'Spree::AvalaraTransaction'").delete_all
+          # end
 
           if shipment.cost != this_ship_price
             changed = true
