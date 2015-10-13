@@ -112,6 +112,7 @@ module Spree
           authorize! :update, Order
           changed = false
           removed = false
+          need_refund = false
           result = []
           order = Order.find_by!(number: params["order_refnum"].to_s)
           @helper = Spree::Retailops::RopOrderHelper.new
@@ -143,7 +144,7 @@ module Spree
               if lirec["removed"] || qty==0
                 if li
                   order.contents.remove(li.variant, li.quantity)
-                  order.refund_balance(full_cancellation: false)
+                  need_refund = true
                   changed = true
                   removed = true
                 end
@@ -175,7 +176,7 @@ module Spree
               elsif qty < oldqty
                 changed = true
                 li = order.contents.remove(variant, oldqty - qty)
-                order.refund_balance(full_cancellation: false)
+                need_refund = true
               end
 
               if lirec["estimated_unit_cost"]
@@ -257,6 +258,7 @@ module Spree
             end
 
             order.update! if changed
+            order.refund_balance(full_cancellation: false) if need_refund
           end
 
           render text: {
