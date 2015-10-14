@@ -155,7 +155,13 @@ module Spree
             @order.shipments.reload
             @order.shipments.each do |s|
                 s.reload
-                s.destroy! if s.manifest.empty?
+                if s.manifest.empty? && s.adjustments.any?
+                  tax_adjustment = s.adjustments.tax.first
+                  tax_adjustment.adjustable_id = shipment.id
+                  tax_adjustment.save!
+                  shipment.send(:recalculate_adjustments)
+                  s.destroy!
+                end
             end
             @order.reload
             @order.update!
