@@ -1,6 +1,27 @@
 module Spree
   module Retailops
     class RopStockHelper
+      
+      #Get the "true" or a little more pessimistic stock quantity
+      #by also considering inventory units that are complete but still unsycned in R.O
+      def get_true_qty(variant, qty)
+        unsynced_variants = get_unsynced_variants
+        if unsynced_variants.has_key? variant.id
+          qty -= unsynced_variants[variant.id]
+        end
+        
+        qty  
+      end
+      
+      #Returns a hash of variants and its quantities from unsynced orders
+      #key=variant_id
+      #value=quantity
+      #{variant_id => quantity}
+      def get_unsynced_variants
+        arr = Spree::Order.joins(:line_items).where('completed_at > ? AND retailops_import = ?', Time.now-12.hours,'yes').pluck(:variant_id, :quantity)
+        Hash[arr.map { |x| [x.first, x.second]} ]
+      end
+      
       def apply_stock variant, stock_hash, detailed
         @locations ||= {}
         current = {}
@@ -16,7 +37,8 @@ module Spree
           location = @locations[locname] ||= StockLocation.find_or_create_by!(name: locname) { |l| l.admin_name = locname }
 
           old = current.delete(location) || { on_hand: 0, backorderable: false }
-          new = { on_hand: qty, backorderable: backorder[locname] ? true : false }
+          true_qty = get_true_qty(variant, qty)
+          new = { on_hand: true_qty, backorderable: backorder[locname] ? true : false }
 
           stock_item = old[:stock_item] || location.stock_item_or_create(variant)
 
