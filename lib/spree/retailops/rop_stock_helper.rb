@@ -19,8 +19,8 @@ module Spree
       #value=quantity
       #{variant_id => quantity}
       def get_unsynced_variants
-        arr = Spree::LineItem.select('variant_id, SUM(quantity) as quantity').joins(:order).where('completed_at > ? AND retailops_import = ?', Time.now-48.hours,'yes').group(:variant_id).map{|li| [li.variant_id, li.quantity]}
-        Hash[arr.map { |x| [x.first, x.second]} ]
+        @unsyncs ||= Spree::LineItem.select('variant_id, SUM(quantity) as quantity').joins(:order).where('completed_at > ? AND retailops_import = ?', Time.now-48.hours,'yes').group(:variant_id).map{|li| [li.variant_id, li.quantity]}
+        Hash[@unsyncs.map { |x| [x.first, x.second]} ]
       end
       
       def apply_stock variant, stock_hash, detailed
