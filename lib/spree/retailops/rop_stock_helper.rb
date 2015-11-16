@@ -5,6 +5,7 @@ module Spree
       #Get the "true" or a little more pessimistic stock quantity
       #by also considering inventory units that are complete but still unsycned in R.O
       def get_true_qty(variant, qty)
+        return qty if variant.nil? || qty < 1
         unsynced_variants = get_unsynced_variants
         if unsynced_variants.has_key? variant.id
           qty -= unsynced_variants[variant.id]
@@ -18,7 +19,7 @@ module Spree
       #value=quantity
       #{variant_id => quantity}
       def get_unsynced_variants
-        arr = Spree::Order.joins(:line_items).where('completed_at > ? AND retailops_import = ?', Time.now-12.hours,'yes').pluck(:variant_id, :quantity)
+        arr = Spree::LineItem.select('variant_id, SUM(quantity) as quantity').joins(:order).where('completed_at > ? AND retailops_import = ?', Time.now-48.hours,'yes').group(:variant_id).map{|li| [li.variant_id, li.quantity]}
         Hash[arr.map { |x| [x.first, x.second]} ]
       end
       
