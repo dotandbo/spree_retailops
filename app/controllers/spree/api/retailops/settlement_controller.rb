@@ -155,7 +155,8 @@ module Spree
             @order.shipments.reload
             @order.shipments.each do |s|
                 s.reload
-                if s.manifest.empty? && s.adjustments.any?
+                # add extra adjustments check for free shipping
+                if s.manifest.empty? && s.adjustments.any? && s.adjustments.tax.any?
                   tax_adjustment = s.adjustments.tax.first
                   tax_adjustment.adjustable_id = shipment.id
                   tax_adjustment.save!
